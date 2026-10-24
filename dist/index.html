@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f8f8f3">
+  <meta name="theme-color" content="#f7f8f4">
   <meta name="description" content="손글씨 사진과 엑셀 파일에서 영어 단어를 가져와 정리하고, 짧은 퀴즈로 복습하는 나만의 단어장">
-  <title>워드킷 — 사진에서 단어장까지</title>
-  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css">
+  <title>보카북이 — 사진에서 단어장까지</title>
+  <link rel="icon" href="./favicon.svg?v=4" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css?v=4">
   <script src="./xlsx.full.min.js" defer></script>
   <script src="./tesseract.min.js" defer></script>
   <script src="./curated-vocab.js" defer></script>
@@ -16,9 +16,9 @@
 <body>
   <div class="app-shell">
     <aside class="sidebar">
-      <a href="#home" class="brand" data-nav="home" aria-label="워드킷 홈">
-        <span class="brand-mark" aria-hidden="true">W<span>✦</span></span>
-        <span class="brand-name">wordkit<span class="brand-dot">.</span></span>
+      <a href="#home" class="brand" data-nav="home" aria-label="보카북이 홈">
+        <span class="brand-mark" aria-hidden="true"><img src="./turtle.svg" alt=""></span>
+        <span class="brand-name">보카북이</span>
       </a>
       <p class="side-caption">MY LEARNING SPACE</p>
       <nav class="side-nav" aria-label="주 메뉴">
@@ -28,7 +28,7 @@
         <button class="nav-item" data-nav="study"><span class="nav-icon" aria-hidden="true">✦</span><span>학습하기</span></button>
       </nav>
       <div class="side-bottom">
-        <div class="tiny-orbit" aria-hidden="true"><span></span><span></span><span></span></div>
+        <img class="side-turtle" src="./turtle.svg" alt="" aria-hidden="true">
         <p>작은 반복이<br><strong>큰 실력이 돼요.</strong></p>
         <div class="privacy-note"><span aria-hidden="true">◉</span> 단어는 이 브라우저에 저장돼요</div>
       </div>
@@ -36,10 +36,10 @@
 
     <main class="main-content">
       <header class="topbar">
-        <div class="breadcrumb">WORDKIT <span>/</span> <span id="pageLabel">홈</span></div>
+        <div class="breadcrumb">보카북이 <span>/</span> <span id="pageLabel">홈</span></div>
         <div class="topbar-right">
           <span class="today-date" id="todayDate"></span>
-          <span class="avatar" aria-label="나의 학습 공간">W</span>
+          <span class="avatar" aria-label="나의 학습 공간"><img src="./turtle.svg" alt=""></span>
         </div>
       </header>
 
@@ -57,7 +57,7 @@
           <div class="hero-art" aria-hidden="true">
             <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
             <div class="floating-card card-back"><span>discover</span><small>발견하다</small></div>
-            <div class="floating-card card-front"><span class="card-star">✦</span><span>curiosity</span><small>호기심</small><div class="card-lines"><i></i><i></i></div></div>
+            <div class="floating-card card-front"><img class="card-turtle" src="./turtle.svg" alt=""><span>curiosity</span><small>호기심</small><div class="card-lines"><i></i><i></i></div></div>
             <div class="spark spark-one">✳</div><div class="spark spark-two">✳</div>
           </div>
         </div>

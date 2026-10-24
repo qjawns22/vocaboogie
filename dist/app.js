@@ -456,7 +456,7 @@
     var content = "\uFEFF" + [["단어", "뜻", "예문"], ...state.words.map(function (w) { return [w.term, w.meaning, w.example]; })].map(function (r) { return r.map(quote).join(","); }).join("\r\n");
     var url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
     var link = document.createElement("a");
-    link.href = url; link.download = "wordkit-words-" + todayKey() + ".csv";
+    link.href = url; link.download = "vocabooki-words-" + todayKey() + ".csv";
     document.body.appendChild(link); link.click(); link.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     toast("단어장을 CSV로 내보냈어요.");
