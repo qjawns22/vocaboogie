@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="./styles.css">
   <script src="./xlsx.full.min.js" defer></script>
   <script src="./tesseract.min.js" defer></script>
+  <script src="./curated-vocab.js" defer></script>
   <script src="./app.js" defer></script>
 </head>
 <body>
@@ -97,6 +98,7 @@
         <input type="file" id="excelInput" accept=".xlsx,.xls,.csv,.tsv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/tab-separated-values" hidden>
         <input type="file" id="anyInput" accept="image/*,.xlsx,.xls,.csv,.tsv" hidden>
         <div class="import-info"><div><span aria-hidden="true">✳</span><strong>손글씨 인식 팁</strong><p>밝은 곳에서 글씨가 크게 보이게 촬영하면 더 잘 읽어요. 인식 결과는 아래에서 직접 고칠 수 있습니다.</p></div><div><span aria-hidden="true">◫</span><strong>엑셀 형식</strong><p>첫 행에 ‘단어, 뜻, 예문’이 있으면 자동으로 맞춰요. 제목이 없어도 앞쪽 열을 읽습니다.</p></div></div>
+        <p class="import-example-note">기존 단어 목록과 일치하는 표현에는 쉬운 영어 회화 예문이 자동으로 채워집니다.</p>
         <div class="sample-row"><span>먼저 사용해 보고 싶다면</span><button class="plain-link" id="sampleButton">연습 단어 6개 추가하기 ↗</button></div>
         <div class="review-panel" id="reviewPanel" hidden>
           <div class="review-header"><div><span class="kicker">REVIEW BEFORE SAVING</span><h2>단어를 확인해 주세요</h2><p id="reviewSummary"></p></div><button class="icon-button" id="clearDraft" aria-label="가져오기 닫기">×</button></div>
@@ -108,7 +110,7 @@
       </section>
 
       <section class="page" id="page-words" aria-labelledby="wordsTitle">
-        <div class="page-intro page-intro-row"><div><span class="kicker">MY WORD BANK</span><h1 id="wordsTitle">내 단어장<span class="accent-period">.</span></h1><p>뜻을 채워 두면 객관식과 타이핑 퀴즈로 더 다양하게 외울 수 있어요.</p></div><button class="btn btn-dark" data-nav="import">+ 단어 추가</button></div>
+        <div class="page-intro page-intro-row"><div><span class="kicker">MY WORD BANK</span><h1 id="wordsTitle">내 단어장<span class="accent-period">.</span></h1><p>짧고 쉬운 영어 회화 예문과 함께 단어를 익혀 보세요.</p></div><button class="btn btn-dark" data-nav="import">+ 단어 추가</button></div>
         <div class="word-tools"><label class="search-box"><span aria-hidden="true">⌕</span><input id="wordSearch" type="search" placeholder="단어 또는 뜻 검색" aria-label="단어 또는 뜻 검색"></label><div class="filter-group" role="group" aria-label="단어 필터"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="due">복습할 단어</button><button class="filter" data-filter="mastered">익숙한 단어</button></div><button class="plain-link export-link" id="exportButton">CSV 내보내기 ↗</button></div>
         <div id="wordList" class="word-list"></div>
       </section>

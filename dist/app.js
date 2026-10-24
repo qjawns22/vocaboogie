@@ -10,6 +10,24 @@
     { term: "journey", meaning: "여정", example: "Learning is a journey." },
     { term: "brave", meaning: "용감한", example: "Be brave enough to try." }
   ];
+  var CURATED = Array.isArray(window.WORDKIT_CURATED) ? window.WORDKIT_CURATED : [];
+  var CURATED_BY_TERM = new Map();
+  CURATED.forEach(function (entry) {
+    CURATED_BY_TERM.set(normalizeTerm(entry.originalTerm), entry);
+    if (!CURATED_BY_TERM.has(normalizeTerm(entry.term))) CURATED_BY_TERM.set(normalizeTerm(entry.term), entry);
+  });
+  SAMPLE_WORDS.forEach(function (entry) {
+    var key = normalizeTerm(entry.term);
+    if (!CURATED_BY_TERM.has(key)) {
+      CURATED_BY_TERM.set(key, {
+        originalTerm: entry.term,
+        sourceMeaning: entry.meaning,
+        term: entry.term,
+        meaning: entry.meaning,
+        example: entry.example
+      });
+    }
+  });
   var state = loadState();
   var draftRows = [];
   var currentFilter = "all";
@@ -42,10 +60,11 @@
         streak: Number(saved.streak) || 0,
         lastStudy: saved.lastStudy || "",
         day: saved.day || "",
-        dayAnswers: Number(saved.dayAnswers) || 0
+        dayAnswers: Number(saved.dayAnswers) || 0,
+        curatedSeeded: saved.curatedSeeded === true
       };
     } catch (e) {
-      return { words: [], xp: 0, streak: 0, lastStudy: "", day: "", dayAnswers: 0 };
+      return { words: [], xp: 0, streak: 0, lastStudy: "", day: "", dayAnswers: 0, curatedSeeded: false };
     }
   }
   function persist() {
@@ -62,6 +81,68 @@
   }
   function normalizeTerm(text) {
     return String(text || "").trim().toLowerCase().replace(/[‘’]/g, "'").replace(/\s+/g, " ");
+  }
+  function curateDraftRow(row) {
+    var entry = CURATED_BY_TERM.get(normalizeTerm(row.term));
+    if (!entry) return row;
+    return {
+      term: entry.term,
+      meaning: !row.meaning || row.meaning === entry.sourceMeaning ? entry.meaning : row.meaning,
+      example: row.example || entry.example
+    };
+  }
+  function enrichSavedWords() {
+    if (!CURATED.length) return false;
+    var changed = false;
+    if (!state.curatedSeeded && !state.words.length) {
+      var seen = new Set();
+      var now = Date.now();
+      CURATED.forEach(function (entry, index) {
+        var key = normalizeTerm(entry.term);
+        if (seen.has(key)) return;
+        seen.add(key);
+        state.words.push({
+          id: "curated-" + index,
+          term: entry.term,
+          meaning: entry.meaning,
+          example: entry.example,
+          level: 0,
+          dueAt: 0,
+          addedAt: now - index
+        });
+      });
+      state.curatedSeeded = true;
+      return true;
+    }
+    state.words.forEach(function (word) {
+      var entry = CURATED_BY_TERM.get(normalizeTerm(word.term));
+      if (!entry) return;
+      if (!word.example || /^\d+(?:\.\d+)?$/.test(String(word.example).trim())) {
+        word.example = entry.example;
+        changed = true;
+      }
+      if (normalizeTerm(word.term) === normalizeTerm(entry.originalTerm) && word.term !== entry.term) {
+        word.term = entry.term;
+        changed = true;
+      }
+      if ((!word.meaning || word.meaning === entry.sourceMeaning) && word.meaning !== entry.meaning) {
+        word.meaning = entry.meaning;
+        changed = true;
+      }
+    });
+    var uniqueWords = new Map();
+    state.words = state.words.filter(function (word) {
+      var key = normalizeTerm(word.term);
+      var first = uniqueWords.get(key);
+      if (!first) { uniqueWords.set(key, word); return true; }
+      if (!first.meaning && word.meaning) first.meaning = word.meaning;
+      if (!first.example && word.example) first.example = word.example;
+      first.level = Math.max(Number(first.level) || 0, Number(word.level) || 0);
+      changed = true;
+      return false;
+    });
+    if (!state.curatedSeeded) { state.curatedSeeded = true; changed = true; }
+    return changed;
   }
   function formatDate() {
     var formatter = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" });
@@ -212,7 +293,7 @@
       var result = await worker.recognize(image);
       var raw = result.data.text.trim();
       byId("ocrText").value = raw;
-      draftRows = parseText(raw);
+      draftRows = parseText(raw).map(curateDraftRow);
       renderDraft();
       byId("reviewSummary").textContent = draftRows.length + "개 후보를 찾았어요. 손글씨는 틀릴 수 있으니 반드시 확인해 주세요.";
       if (!raw) toast("읽어낸 글씨가 없어요. 사진을 다시 찍거나 직접 적어 주세요.");
@@ -275,7 +356,7 @@
             if (meaning && !existing.meaning.split(" · ").includes(meaning)) existing.meaning += (existing.meaning ? " · " : "") + meaning;
             if (example && !existing.example) existing.example = example;
           } else {
-            var entry = { term: term, meaning: meaning, example: example };
+          var entry = curateDraftRow({ term: term, meaning: meaning, example: example });
             foundByTerm.set(key, entry);
             found.push(entry);
           }
@@ -315,7 +396,7 @@
       var existing = state.words.find(function (w) { return normalizeTerm(w.term) === key; });
       if (existing) {
         if (row.meaning && !existing.meaning) { existing.meaning = row.meaning; updated++; }
-        if (row.example && !existing.example) existing.example = row.example;
+        if (row.example && !existing.example) { existing.example = row.example; updated++; }
       } else {
         state.words.push({ id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(), term: row.term, meaning: row.meaning, example: row.example, level: 0, dueAt: 0, addedAt: Date.now() + added });
         added++;
@@ -325,7 +406,7 @@
     persist();
     clearDraft();
     renderWords();
-    toast(added + "개 단어를 추가했어요" + (updated ? " · " + updated + "개 뜻을 채웠어요" : "") + "!");
+    toast(added + "개 단어를 추가했어요" + (updated ? " · " + updated + "개 항목을 보완했어요" : "") + "!");
     go("words");
   }
   function renderWords() {
@@ -345,7 +426,7 @@
     holder.innerHTML = list.map(function (w) {
       var level = Number(w.level) || 0;
       var marker = level >= 3 ? "mastered" : w.dueAt && w.dueAt <= now ? "ready" : "";
-      return '<article class="word-row" data-id="' + escapeHtml(w.id) + '"><div class="word-main"><strong>' + escapeHtml(w.term) + '</strong><small>' + (level >= 3 ? "익숙한 단어" : level ? "복습 중" : "새 단어") + '</small></div><div class="word-meaning">' + escapeHtml(w.meaning || "뜻을 추가해 주세요") + '</div><div class="word-example">' + escapeHtml(w.example || "예문을 추가해 보세요") + '</div><div class="word-actions"><span class="mastery-dot ' + marker + '" aria-hidden="true"></span><button data-edit="' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.term) + ' 수정">✎</button><button data-delete="' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.term) + ' 삭제">×</button></div></article>';
+      return '<article class="word-row" data-id="' + escapeHtml(w.id) + '"><div class="word-main"><strong>' + escapeHtml(w.term) + '</strong><small>' + (level >= 3 ? "익숙한 단어" : level ? "복습 중" : "새 단어") + '</small></div><div class="word-meaning">' + escapeHtml(w.meaning || "뜻을 추가해 주세요") + '</div><div class="word-example"><span>회화 예문</span>' + escapeHtml(w.example || "예문을 추가해 보세요") + '</div><div class="word-actions"><span class="mastery-dot ' + marker + '" aria-hidden="true"></span><button data-edit="' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.term) + ' 수정">✎</button><button data-delete="' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.term) + ' 삭제">×</button></div></article>';
     }).join("");
   }
   function editWord(id) {
@@ -439,7 +520,7 @@
       body = '<span class="question-tag">기억 카드</span><p class="question-prompt">단어를 잠깐 보고 기억해 보세요.</p><h2 class="question-word">' + (study.hidden || answered ? '••••••' : escapeHtml(word.term)) + '</h2><p class="memory-prompt">' + (study.hidden || answered ? "방금 본 단어를 직접 써 보세요." : "준비되면 단어를 숨기고 써 보세요. 뜻을 추가하면 다른 퀴즈도 풀 수 있어요.") + '</p>' + (answered ? "" : study.hidden ? '<form class="answer-form" id="answerForm"><input id="answerInput" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="기억한 영단어" placeholder="기억한 단어를 입력해 주세요" required><button class="btn btn-dark" type="submit">확인 →</button></form>' : '<button class="btn btn-outline" data-memory-hide>단어 숨기기 →</button>');
     }
     if (answered) {
-      body += '<div class="feedback' + (study.feedback.correct ? "" : " wrong") + '">' + (study.feedback.correct ? "정답이에요! +10 XP ✦" : "괜찮아요, 다음에 다시 만나요.") + '<small>정답: ' + escapeHtml(word.term) + (word.meaning ? " · " + escapeHtml(word.meaning) : "") + '</small></div>';
+      body += '<div class="feedback' + (study.feedback.correct ? "" : " wrong") + '">' + (study.feedback.correct ? "정답이에요! +10 XP ✦" : "괜찮아요, 다음에 다시 만나요.") + '<small>정답: ' + escapeHtml(word.term) + (word.meaning ? " · " + escapeHtml(word.meaning) : "") + '</small>' + (word.example ? '<span class="study-example">' + escapeHtml(word.example) + '</span>' : "") + '</div>';
     }
     body += '<div class="question-bottom"><small>' + (answered ? "헷갈린 단어는 더 자주 나와요." : "천천히 생각해도 괜찮아요.") + '</small>' + (answered ? '<button class="btn btn-dark" data-study-next>다음 단어 →</button>' : "") + '</div></div>';
     shell.innerHTML = head + body;
@@ -493,7 +574,7 @@
     byId("dropZone").addEventListener("drop", function (e) { acceptFile(e.dataTransfer.files[0]); });
     byId("clearDraft").addEventListener("click", clearDraft);
     byId("parseOcrButton").addEventListener("click", function () {
-      draftRows = parseText(byId("ocrText").value);
+      draftRows = parseText(byId("ocrText").value).map(curateDraftRow);
       renderDraft();
       byId("reviewSummary").textContent = draftRows.length + "개 후보를 추출했어요. 표에서 수정한 뒤 추가해 주세요.";
       if (!draftRows.length) toast("한 줄에 한 단어씩 적어 주세요.");
@@ -554,8 +635,10 @@
       recordAnswer(answer === normalizeTerm(study.pool[study.index].term), -1);
     });
   }
+  var curatedChanged = enrichSavedWords();
   formatDate();
   initEvents();
-  renderDashboard();
+  if (curatedChanged) persist();
+  else renderDashboard();
   go(["home", "import", "words", "study"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home");
 })();
