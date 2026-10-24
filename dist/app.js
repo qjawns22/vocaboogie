@@ -229,10 +229,10 @@
     var headerAt = -1, wordCol = -1, meaningCol = -1, exampleCol = -1;
     for (var i = 0; i < Math.min(rows.length, 5); i++) {
       var row = rows[i].map(function (cell) { return String(cell || "").trim().toLowerCase(); });
-      var w = row.findIndex(function (x) { return /^(영어|영단어|단어|word|english|vocabulary|term|표현)$/.test(x); });
+      var w = row.findIndex(function (x) { return /^(영어|영단어|단어|word|english|eng|vocabulary|term|표현)$/.test(x); });
       if (w !== -1) {
         headerAt = i; wordCol = w;
-        meaningCol = row.findIndex(function (x) { return /^(뜻|의미|해석|한국어|meaning|definition|translation)$/.test(x); });
+        meaningCol = row.findIndex(function (x) { return /^(뜻|의미|해석|한국어|korean|kor|meaning|definition|translation)$/.test(x); });
         exampleCol = row.findIndex(function (x) { return /^(예문|문장|example|sentence)$/.test(x); });
         break;
       }
@@ -246,7 +246,7 @@
       }
       wordCol = scores.indexOf(Math.max.apply(null, scores));
       meaningCol = wordCol + 1;
-      exampleCol = wordCol + 2;
+      exampleCol = -1;
     }
     return { headerAt: headerAt, wordCol: wordCol, meaningCol: meaningCol, exampleCol: exampleCol };
   }
@@ -258,18 +258,27 @@
       var bytes = await file.arrayBuffer();
       var book = XLSX.read(bytes, { type: "array" });
       var found = [];
+      var foundByTerm = new Map();
       book.SheetNames.forEach(function (name) {
         var rows = XLSX.utils.sheet_to_json(book.Sheets[name], { header: 1, defval: "", blankrows: false });
         if (!rows.length) return;
         var map = bestColumns(rows);
         rows.slice(map.headerAt + 1).forEach(function (row) {
           var term = String(row[map.wordCol] || "").trim();
-          if (!/[A-Za-z]/.test(term) || term.length > 100) return;
-          found.push({
-            term: term,
-            meaning: map.meaningCol >= 0 ? String(row[map.meaningCol] || "").trim() : "",
-            example: map.exampleCol >= 0 ? String(row[map.exampleCol] || "").trim() : ""
-          });
+          var meaning = map.meaningCol >= 0 ? String(row[map.meaningCol] || "").trim() : "";
+          var example = map.exampleCol >= 0 ? String(row[map.exampleCol] || "").trim() : "";
+          if (!/^[A-Za-z]/.test(term) || term.length > 100) return;
+          if (/^(eng|english|word|vocabulary|term)$/i.test(term) && /^(kor|korean|meaning|definition|translation|뜻|의미|해석)$/i.test(meaning)) return;
+          var key = normalizeTerm(term);
+          var existing = foundByTerm.get(key);
+          if (existing) {
+            if (meaning && !existing.meaning.split(" · ").includes(meaning)) existing.meaning += (existing.meaning ? " · " : "") + meaning;
+            if (example && !existing.example) existing.example = example;
+          } else {
+            var entry = { term: term, meaning: meaning, example: example };
+            foundByTerm.set(key, entry);
+            found.push(entry);
+          }
         });
       });
       draftRows = found.slice(0, 1000);
