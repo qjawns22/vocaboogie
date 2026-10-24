@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f8f8f3">
+  <meta name="description" content="손글씨 사진과 엑셀 파일에서 영어 단어를 가져와 정리하고, 짧은 퀴즈로 복습하는 나만의 단어장">
+  <title>워드킷 — 사진에서 단어장까지</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./xlsx.full.min.js" defer></script>
+  <script src="./tesseract.min.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a href="#home" class="brand" data-nav="home" aria-label="워드킷 홈">
+        <span class="brand-mark" aria-hidden="true">W<span>✦</span></span>
+        <span class="brand-name">wordkit<span class="brand-dot">.</span></span>
+      </a>
+      <p class="side-caption">MY LEARNING SPACE</p>
+      <nav class="side-nav" aria-label="주 메뉴">
+        <button class="nav-item active" data-nav="home"><span class="nav-icon" aria-hidden="true">⌂</span><span>홈</span></button>
+        <button class="nav-item" data-nav="import"><span class="nav-icon" aria-hidden="true">⊕</span><span>가져오기</span></button>
+        <button class="nav-item" data-nav="words"><span class="nav-icon" aria-hidden="true">▤</span><span>내 단어장</span><span class="nav-count" id="sideWordCount">0</span></button>
+        <button class="nav-item" data-nav="study"><span class="nav-icon" aria-hidden="true">✦</span><span>학습하기</span></button>
+      </nav>
+      <div class="side-bottom">
+        <div class="tiny-orbit" aria-hidden="true"><span></span><span></span><span></span></div>
+        <p>작은 반복이<br><strong>큰 실력이 돼요.</strong></p>
+        <div class="privacy-note"><span aria-hidden="true">◉</span> 단어는 이 브라우저에 저장돼요</div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="breadcrumb">WORDKIT <span>/</span> <span id="pageLabel">홈</span></div>
+        <div class="topbar-right">
+          <span class="today-date" id="todayDate"></span>
+          <span class="avatar" aria-label="나의 학습 공간">W</span>
+        </div>
+      </header>
+
+      <section class="page active" id="page-home" aria-labelledby="homeTitle">
+        <div class="hero">
+          <div class="hero-copy">
+            <div class="eyebrow"><span class="eyebrow-line"></span> YOUR WORDS, YOUR WAY</div>
+            <h1 id="homeTitle">사진 속 단어가<br><em>내 실력</em>이 되는 곳.</h1>
+            <p>손글씨 사진이나 엑셀 파일을 올려보세요.<br>단어장을 만들고, 하루 10개씩 가볍게 외워요.</p>
+            <div class="hero-actions">
+              <button class="btn btn-dark" data-nav="import">단어 가져오기 <span aria-hidden="true">↗</span></button>
+              <button class="btn btn-text" data-nav="study">바로 학습하기 <span aria-hidden="true">→</span></button>
+            </div>
+          </div>
+          <div class="hero-art" aria-hidden="true">
+            <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+            <div class="floating-card card-back"><span>discover</span><small>발견하다</small></div>
+            <div class="floating-card card-front"><span class="card-star">✦</span><span>curiosity</span><small>호기심</small><div class="card-lines"><i></i><i></i></div></div>
+            <div class="spark spark-one">✳</div><div class="spark spark-two">✳</div>
+          </div>
+        </div>
+
+        <div class="section-heading dashboard-heading">
+          <div><span class="kicker">TODAY'S PROGRESS</span><h2>오늘도 한 걸음, 착실하게</h2></div>
+          <button class="plain-link" data-nav="study">학습 시작 <span aria-hidden="true">↗</span></button>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card stat-green"><div class="stat-top"><span>오늘의 학습</span><span class="stat-symbol">↗</span></div><div class="stat-value"><strong id="todayLearned">0</strong><span>/ 10 단어</span></div><div class="stat-track"><span id="todayProgressBar"></span></div><small id="todaySubtext">첫 단어를 기다리고 있어요</small></div>
+          <div class="stat-card"><div class="stat-top"><span>내 단어장</span><span class="stat-symbol">▤</span></div><div class="stat-value"><strong id="totalWords">0</strong><span>개</span></div><small>차곡차곡 쌓이는 나만의 단어</small></div>
+          <div class="stat-card"><div class="stat-top"><span>연속 학습</span><span class="stat-symbol">✴</span></div><div class="stat-value"><strong id="streakDays">0</strong><span>일</span></div><small>오늘 한 번만 해도 기록이 시작돼요</small></div>
+          <div class="stat-card"><div class="stat-top"><span>모은 XP</span><span class="stat-symbol">✦</span></div><div class="stat-value"><strong id="totalXp">0</strong><span>XP</span></div><small>맞힐 때마다 실력이 반짝!</small></div>
+        </div>
+        <div class="home-lower">
+          <div class="content-card quick-import">
+            <div class="card-heading"><span class="kicker">START HERE</span><h3>단어는 어디에 있나요?</h3><p>가져오기만 하면 학습 준비 끝.</p></div>
+            <div class="quick-tiles">
+              <button class="quick-tile" id="homePhotoButton"><span class="quick-icon photo-icon" aria-hidden="true">▧</span><span><strong>사진에서</strong><small>손글씨 단어도 확인하며 정리</small></span><span class="tile-arrow">↗</span></button>
+              <button class="quick-tile" id="homeExcelButton"><span class="quick-icon excel-icon" aria-hidden="true">▥</span><span><strong>엑셀에서</strong><small>여러 단어를 한 번에 추가</small></span><span class="tile-arrow">↗</span></button>
+            </div>
+          </div>
+          <div class="content-card recent-card">
+            <div class="card-heading flex-heading"><div><span class="kicker">MY COLLECTION</span><h3>최근 단어</h3></div><button class="plain-link" data-nav="words">전체 보기 ↗</button></div>
+            <div id="recentWords" class="recent-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-import" aria-labelledby="importTitle">
+        <div class="page-intro"><span class="kicker">BUILD YOUR WORD BANK</span><h1 id="importTitle">단어를 데려와요<span class="accent-period">.</span></h1><p>사진은 손글씨를 읽어 단어 후보를 만들고, 엑셀은 표의 단어를 가져옵니다. 저장 전에 언제든 수정할 수 있어요.</p></div>
+        <div class="upload-grid">
+          <button class="upload-card" id="photoUploadCard"><span class="upload-illustration photo-illustration" aria-hidden="true"><span>abc</span><i>✦</i></span><span class="upload-meta"><span class="upload-badge">01 · PHOTO</span><strong>사진에서 가져오기</strong><small>JPG, PNG, WEBP · 손글씨도 인식 시도</small></span><span class="upload-arrow" aria-hidden="true">↗</span></button>
+          <button class="upload-card" id="excelUploadCard"><span class="upload-illustration excel-illustration" aria-hidden="true"><span>A&nbsp; B<br>1&nbsp; ✦<br>2&nbsp; ✦</span></span><span class="upload-meta"><span class="upload-badge">02 · SPREADSHEET</span><strong>엑셀에서 가져오기</strong><small>XLSX, XLS, CSV, TSV · 여러 시트 지원</small></span><span class="upload-arrow" aria-hidden="true">↗</span></button>
+        </div>
+        <div class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="파일을 끌어다 놓거나 선택하기"><span class="drop-icon" aria-hidden="true">⇧</span><strong>파일을 이곳에 놓아주세요</strong><span>또는 클릭해서 사진·엑셀 파일을 선택해요</span></div>
+        <input type="file" id="photoInput" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" hidden>
+        <input type="file" id="excelInput" accept=".xlsx,.xls,.csv,.tsv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/tab-separated-values" hidden>
+        <input type="file" id="anyInput" accept="image/*,.xlsx,.xls,.csv,.tsv" hidden>
+        <div class="import-info"><div><span aria-hidden="true">✳</span><strong>손글씨 인식 팁</strong><p>밝은 곳에서 글씨가 크게 보이게 촬영하면 더 잘 읽어요. 인식 결과는 아래에서 직접 고칠 수 있습니다.</p></div><div><span aria-hidden="true">◫</span><strong>엑셀 형식</strong><p>첫 행에 ‘단어, 뜻, 예문’이 있으면 자동으로 맞춰요. 제목이 없어도 앞쪽 열을 읽습니다.</p></div></div>
+        <div class="sample-row"><span>먼저 사용해 보고 싶다면</span><button class="plain-link" id="sampleButton">연습 단어 6개 추가하기 ↗</button></div>
+        <div class="review-panel" id="reviewPanel" hidden>
+          <div class="review-header"><div><span class="kicker">REVIEW BEFORE SAVING</span><h2>단어를 확인해 주세요</h2><p id="reviewSummary"></p></div><button class="icon-button" id="clearDraft" aria-label="가져오기 닫기">×</button></div>
+          <div class="ocr-layout" id="ocrLayout" hidden><div class="ocr-image-wrap"><img id="ocrImage" alt="올린 단어 사진 미리보기"></div><div class="ocr-text-wrap"><label for="ocrText">읽어낸 글씨 <span>틀린 부분을 고친 뒤 다시 추출하세요.</span></label><textarea id="ocrText" rows="8" spellcheck="false"></textarea><button class="btn btn-outline" id="parseOcrButton">수정한 글씨로 다시 추출</button></div></div>
+          <div class="ocr-progress" id="ocrProgress" hidden><span class="spinner"></span><span id="ocrProgressText">사진 속 글씨를 읽는 중…</span></div>
+          <div class="draft-table-wrap"><table class="draft-table"><thead><tr><th>영단어 / 표현</th><th>뜻 <span>(선택)</span></th><th>예문 <span>(선택)</span></th><th><span class="sr-only">삭제</span></th></tr></thead><tbody id="draftBody"></tbody></table></div>
+          <div class="review-actions"><button class="btn btn-outline" id="addDraftRow">+ 빈 줄 추가</button><button class="btn btn-dark" id="saveDraft">단어장에 추가 <span aria-hidden="true">→</span></button></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-words" aria-labelledby="wordsTitle">
+        <div class="page-intro page-intro-row"><div><span class="kicker">MY WORD BANK</span><h1 id="wordsTitle">내 단어장<span class="accent-period">.</span></h1><p>뜻을 채워 두면 객관식과 타이핑 퀴즈로 더 다양하게 외울 수 있어요.</p></div><button class="btn btn-dark" data-nav="import">+ 단어 추가</button></div>
+        <div class="word-tools"><label class="search-box"><span aria-hidden="true">⌕</span><input id="wordSearch" type="search" placeholder="단어 또는 뜻 검색" aria-label="단어 또는 뜻 검색"></label><div class="filter-group" role="group" aria-label="단어 필터"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="due">복습할 단어</button><button class="filter" data-filter="mastered">익숙한 단어</button></div><button class="plain-link export-link" id="exportButton">CSV 내보내기 ↗</button></div>
+        <div id="wordList" class="word-list"></div>
+      </section>
+
+      <section class="page" id="page-study" aria-labelledby="studyTitle">
+        <div class="page-intro"><span class="kicker">A LITTLE EVERY DAY</span><h1 id="studyTitle">가볍게, 오래 기억해요<span class="accent-period">.</span></h1><p>10문제씩 짧게 풀고, 헷갈린 단어는 더 자주 만나요.</p></div>
+        <div class="study-shell" id="studyShell"></div>
+      </section>
+    </main>
+  </div>
+  <nav class="mobile-nav" aria-label="모바일 메뉴"><button class="active" data-nav="home"><span>⌂</span>홈</button><button data-nav="import"><span>⊕</span>가져오기</button><button data-nav="words"><span>▤</span>단어장</button><button data-nav="study"><span>✦</span>학습</button></nav>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
