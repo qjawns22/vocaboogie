@@ -54,9 +54,12 @@
   function loadState() {
     try {
       var saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+      if (Object.prototype.hasOwnProperty.call(saved, "xp")) {
+        delete saved.xp;
+        try { localStorage.setItem(STORE_KEY, JSON.stringify(saved)); } catch (e) { /* 학습 기록은 계속 읽을 수 있어요. */ }
+      }
       return {
         words: Array.isArray(saved.words) ? saved.words : [],
-        xp: Number(saved.xp) || 0,
         streak: Number(saved.streak) || 0,
         lastStudy: saved.lastStudy || "",
         day: saved.day || "",
@@ -64,7 +67,7 @@
         curatedSeeded: saved.curatedSeeded === true
       };
     } catch (e) {
-      return { words: [], xp: 0, streak: 0, lastStudy: "", day: "", dayAnswers: 0, curatedSeeded: false };
+      return { words: [], streak: 0, lastStudy: "", day: "", dayAnswers: 0, curatedSeeded: false };
     }
   }
   function persist() {
@@ -172,7 +175,7 @@
     byId("totalWords").textContent = state.words.length;
     byId("sideWordCount").textContent = state.words.length;
     byId("streakDays").textContent = effectiveStreak();
-    byId("totalXp").textContent = state.xp;
+    byId("dueWords").textContent = state.words.filter(function (word) { return Number(word.dueAt || 0) <= Date.now(); }).length;
     var recent = state.words.slice().sort(function (a, b) { return (b.addedAt || 0) - (a.addedAt || 0); }).slice(0, 4);
     byId("recentWords").innerHTML = recent.length ? recent.map(function (w) {
       return '<div class="recent-item"><strong>' + escapeHtml(w.term) + '</strong><span>' + escapeHtml(w.meaning || "뜻을 추가해 주세요") + '</span></div>';
@@ -475,7 +478,7 @@
     var due = shuffle(state.words.filter(function (w) { return Number(w.dueAt || 0) <= now; }));
     var later = shuffle(state.words.filter(function (w) { return Number(w.dueAt || 0) > now; }));
     var pool = due.concat(later).slice(0, 10);
-    study = { pool: pool, index: 0, correct: 0, xp: 0, feedback: null, hidden: false, choiceOptions: null };
+    study = { pool: pool, index: 0, correct: 0, feedback: null, hidden: false, choiceOptions: null };
     go("study"); renderStudy();
   }
   function currentQuestionMode(word) {
@@ -496,7 +499,7 @@
       return;
     }
     if (study.index >= study.pool.length) {
-      shell.innerHTML = '<div class="study-result"><div class="result-stars">✦ ✧ ✦</div><span class="kicker">ROUND COMPLETE</span><h2>오늘도 해냈어요!</h2><p>조금씩 반복한 단어가 오래 남아요.<br>헷갈린 단어는 다음 학습에서 다시 만나요.</p><div class="result-metrics"><span><strong>' + study.correct + '/' + study.pool.length + '</strong>기억한 단어</span><span><strong>+' + study.xp + '</strong>이번 라운드 XP</span></div><button class="btn btn-dark" data-study-again>한 번 더 학습 →</button></div>';
+      shell.innerHTML = '<div class="study-result"><div class="result-stars">✦ ✧ ✦</div><span class="kicker">ROUND COMPLETE</span><h2>오늘도 해냈어요!</h2><p>조금씩 반복한 단어가 오래 남아요.<br>헷갈린 단어는 다음 학습에서 다시 만나요.</p><div class="result-metrics"><span><strong>' + study.correct + '/' + study.pool.length + '</strong>기억한 단어</span><span><strong>' + (study.pool.length - study.correct) + '</strong>다시 볼 단어</span></div><button class="btn btn-dark" data-study-again>한 번 더 학습 →</button></div>';
       study = null;
       return;
     }
@@ -520,7 +523,7 @@
       body = '<span class="question-tag">기억 카드</span><p class="question-prompt">단어를 잠깐 보고 기억해 보세요.</p><h2 class="question-word">' + (study.hidden || answered ? '••••••' : escapeHtml(word.term)) + '</h2><p class="memory-prompt">' + (study.hidden || answered ? "방금 본 단어를 직접 써 보세요." : "준비되면 단어를 숨기고 써 보세요. 뜻을 추가하면 다른 퀴즈도 풀 수 있어요.") + '</p>' + (answered ? "" : study.hidden ? '<form class="answer-form" id="answerForm"><input id="answerInput" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="기억한 영단어" placeholder="기억한 단어를 입력해 주세요" required><button class="btn btn-dark" type="submit">확인 →</button></form>' : '<button class="btn btn-outline" data-memory-hide>단어 숨기기 →</button>');
     }
     if (answered) {
-      body += '<div class="feedback' + (study.feedback.correct ? "" : " wrong") + '">' + (study.feedback.correct ? "정답이에요! +10 XP ✦" : "괜찮아요, 다음에 다시 만나요.") + '<small>정답: ' + escapeHtml(word.term) + (word.meaning ? " · " + escapeHtml(word.meaning) : "") + '</small>' + (word.example ? '<span class="study-example">' + escapeHtml(word.example) + '</span>' : "") + '</div>';
+      body += '<div class="feedback' + (study.feedback.correct ? "" : " wrong") + '">' + (study.feedback.correct ? "정답이에요!" : "괜찮아요, 다음에 다시 만나요.") + '<small>정답: ' + escapeHtml(word.term) + (word.meaning ? " · " + escapeHtml(word.meaning) : "") + '</small>' + (word.example ? '<span class="study-example">' + escapeHtml(word.example) + '</span>' : "") + '</div>';
     }
     body += '<div class="question-bottom"><small>' + (answered ? "헷갈린 단어는 더 자주 나와요." : "천천히 생각해도 괜찮아요.") + '</small>' + (answered ? '<button class="btn btn-dark" data-study-next>다음 단어 →</button>' : "") + '</div></div>';
     shell.innerHTML = head + body;
@@ -534,8 +537,6 @@
       word.level = Math.min(6, (Number(word.level) || 0) + 1);
       word.dueAt = Date.now() + intervals[Math.min(word.level - 1, intervals.length - 1)] * 86400000;
       study.correct++;
-      study.xp += 10;
-      state.xp += 10;
     } else {
       word.level = 0;
       word.dueAt = Date.now() + 3600000;
