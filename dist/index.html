@@ -7,11 +7,11 @@
   <meta name="description" content="손글씨 사진과 엑셀 파일에서 영어 단어를 가져와 정리하고, 짧은 퀴즈로 복습하는 나만의 단어장">
   <title>보카북이 — 사진에서 단어장까지</title>
   <link rel="icon" href="./favicon.svg?v=4" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=4">
+  <link rel="stylesheet" href="./styles.css?v=5">
   <script src="./xlsx.full.min.js" defer></script>
   <script src="./tesseract.min.js" defer></script>
   <script src="./curated-vocab.js" defer></script>
-  <script src="./app.js?v=6" defer></script>
+  <script src="./app.js?v=7" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -111,7 +111,7 @@
       </section>
 
       <section class="page" id="page-words" aria-labelledby="wordsTitle">
-        <div class="page-intro page-intro-row"><div><span class="kicker">MY WORD BANK</span><h1 id="wordsTitle">내 단어장<span class="accent-period">.</span></h1><p>짧고 쉬운 영어 회화 예문과 함께 단어를 익혀 보세요.</p></div><button class="btn btn-dark" data-nav="import">+ 단어 추가</button></div>
+        <div class="page-intro page-intro-row"><div><span class="kicker">MY WORD BANK</span><h1 id="wordsTitle">내 단어장<span class="accent-period">.</span></h1><p>짧고 쉬운 영어 회화 예문과 함께, 단어를 추가한 날짜별로 살펴보세요.</p></div><button class="btn btn-dark" data-nav="import">+ 단어 추가</button></div>
         <div class="word-tools"><label class="search-box"><span aria-hidden="true">⌕</span><input id="wordSearch" type="search" placeholder="단어 또는 뜻 검색" aria-label="단어 또는 뜻 검색"></label><div class="filter-group" role="group" aria-label="단어 필터"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="mastered">익숙한 단어</button></div><button class="plain-link export-link" id="exportButton">CSV 내보내기 ↗</button></div>
         <div id="wordList" class="word-list"></div>
       </section>

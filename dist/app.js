@@ -440,10 +440,23 @@
       holder.innerHTML = '<div class="empty-state"><div class="empty-illustration">✦</div><h3>' + (state.words.length ? "조건에 맞는 단어가 없어요" : "첫 단어장을 만들어 볼까요?") + '</h3><p>' + (state.words.length ? "검색어나 필터를 바꿔 보세요." : "사진이나 엑셀을 올려 나만의 단어를 모아 보세요.") + '</p>' + (state.words.length ? "" : '<button class="btn btn-dark" data-nav="import">단어 가져오기 →</button>') + '</div>';
       return;
     }
-    holder.innerHTML = list.map(function (w) {
-      var level = Number(w.level) || 0;
-      var marker = level >= 3 ? "mastered" : w.dueAt && w.dueAt <= now ? "ready" : "";
-      return '<article class="word-row" data-id="' + escapeHtml(w.id) + '"><div class="word-main"><strong>' + escapeHtml(w.term) + '</strong><small>' + (level >= 3 ? "익숙한 단어" : level ? "복습 중" : "새 단어") + '</small></div><div class="word-meaning">' + escapeHtml(w.meaning || "뜻을 추가해 주세요") + '</div><div class="word-example"><span>회화 예문</span>' + escapeHtml(w.example || "예문을 추가해 보세요") + '</div><div class="word-actions"><span class="mastery-dot ' + marker + '" aria-hidden="true"></span><button data-edit="' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.term) + ' 수정">✎</button><button data-delete="' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.term) + ' 삭제">×</button></div></article>';
+    var dateFormatter = new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
+    var groups = new Map();
+    list.forEach(function (word) {
+      var addedAt = Number(word.addedAt);
+      var hasDate = Number.isFinite(addedAt) && addedAt > 0;
+      var date = hasDate ? new Date(addedAt) : null;
+      var key = hasDate ? todayKey(date) : "unknown";
+      if (!groups.has(key)) groups.set(key, { label: hasDate ? dateFormatter.format(date) : "날짜 정보 없음", words: [] });
+      groups.get(key).words.push(word);
+    });
+    holder.innerHTML = Array.from(groups.values()).map(function (group) {
+      var rows = group.words.map(function (w) {
+        var level = Number(w.level) || 0;
+        var marker = level >= 3 ? "mastered" : w.dueAt && w.dueAt <= now ? "ready" : "";
+        return '<article class="word-row" data-id="' + escapeHtml(w.id) + '"><div class="word-main"><strong>' + escapeHtml(w.term) + '</strong><small>' + (level >= 3 ? "익숙한 단어" : level ? "복습 중" : "새 단어") + '</small></div><div class="word-meaning">' + escapeHtml(w.meaning || "뜻을 추가해 주세요") + '</div><div class="word-example"><span>회화 예문</span>' + escapeHtml(w.example || "예문을 추가해 보세요") + '</div><div class="word-actions"><span class="mastery-dot ' + marker + '" aria-hidden="true"></span><button data-edit="' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.term) + ' 수정">✎</button><button data-delete="' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.term) + ' 삭제">×</button></div></article>';
+      }).join("");
+      return '<section class="word-date-group" aria-label="' + escapeHtml(group.label) + '"><div class="word-date-heading"><h2>' + escapeHtml(group.label) + '</h2><span>' + group.words.length + '개</span></div><div class="word-date-items">' + rows + '</div></section>';
     }).join("");
   }
   function editWord(id) {
