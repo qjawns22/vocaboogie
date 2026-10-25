@@ -7,11 +7,11 @@
   <meta name="description" content="손글씨 사진과 엑셀 파일에서 영어 단어를 가져와 정리하고, 짧은 퀴즈로 복습하는 나만의 단어장">
   <title>보카북이 — 사진에서 단어장까지</title>
   <link rel="icon" href="./favicon.svg?v=4" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=6">
+  <link rel="stylesheet" href="./styles.css?v=7">
   <script src="./xlsx.full.min.js" defer></script>
   <script src="./tesseract.min.js" defer></script>
   <script src="./curated-vocab.js" defer></script>
-  <script src="./app.js?v=8" defer></script>
+  <script src="./app.js?v=9" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -70,7 +70,7 @@
         <div class="stats-grid">
           <div class="stat-card stat-green"><div class="stat-top"><span>오늘의 학습</span><span class="stat-symbol">↗</span></div><div class="stat-value"><strong id="todayLearned">0</strong><span>/ 10 단어</span></div><div class="stat-track"><span id="todayProgressBar"></span></div><small id="todaySubtext">첫 단어를 기다리고 있어요</small></div>
           <div class="stat-card"><div class="stat-top"><span>내 단어장</span><span class="stat-symbol">▤</span></div><div class="stat-value"><strong id="totalWords">0</strong><span>개</span></div><small>차곡차곡 쌓이는 나만의 단어</small></div>
-          <div class="stat-card"><div class="stat-top"><span>연속 학습</span><span class="stat-symbol">✴</span></div><div class="stat-value"><strong id="streakDays">0</strong><span>일</span></div><small>오늘 한 번만 해도 기록이 시작돼요</small></div>
+          <button class="stat-card stat-link compose-link" data-nav="compose"><span class="stat-top"><span>영작 연습</span><span class="stat-symbol">✎</span></span><span class="compose-card-title">한국어를 보고<br>영어로 써보기</span><small>내 단어장으로 연습하기 →</small></button>
           <button class="stat-card stat-link" data-nav="mistakes"><span class="stat-top"><span>오답노트</span><span class="stat-symbol">↺</span></span><span class="stat-value"><strong id="wrongNoteCount">0</strong><span>개</span></span><small>틀린 문제와 정답 다시 보기 →</small></button>
         </div>
         <div class="home-lower">
@@ -119,6 +119,11 @@
       <section class="page" id="page-study" aria-labelledby="studyTitle">
         <div class="page-intro"><span class="kicker">A LITTLE EVERY DAY</span><h1 id="studyTitle">가볍게, 오래 기억해요<span class="accent-period">.</span></h1><p>10문제씩 짧게 풀고, 헷갈린 단어는 더 자주 만나요.</p></div>
         <div class="study-shell" id="studyShell"></div>
+      </section>
+
+      <section class="page" id="page-compose" aria-labelledby="composeTitle">
+        <div class="page-intro"><span class="kicker">WRITE IN ENGLISH</span><h1 id="composeTitle">내 단어로 영작해요<span class="accent-period">.</span></h1><p>한국어 문장을 읽고 영어로 답해 보세요. 답을 쓴 뒤 예문과 비교하며 스스로 확인할 수 있어요.</p></div>
+        <div class="study-shell" id="composeShell"></div>
       </section>
 
       <section class="page" id="page-mistakes" aria-labelledby="mistakesTitle">

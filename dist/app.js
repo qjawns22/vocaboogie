@@ -33,6 +33,23 @@
   var currentFilter = "all";
   var currentPage = "home";
   var study = null;
+  var compose = null;
+  var COMPOSE_PROMPTS = {
+    "startle": "깜짝 놀랐잖아!", "surprise": "너에게 깜짝 선물이 있어.",
+    "blow away": "그 영화는 정말 감동적이었어.", "i can tell": "네가 피곤한 게 보여.",
+    "scare": "그 소리에 깜짝 놀랐어.", "pick it up": "내일 다시 이야기하자.",
+    "it's on me": "오늘 점심은 내가 살게.", "no wonder": "네가 피곤한 것도 당연해.",
+    "grow on": "이 노래가 점점 좋아져.", "take a day off": "하루 쉬어야겠어.",
+    "make it": "우리는 제시간에 도착했어.", "find out": "방금 그 소식을 알았어.",
+    "look for": "열쇠를 찾고 있어.", "help out": "나 좀 도와줄 수 있어?",
+    "figure out": "우리가 방법을 찾을 거야.", "go over": "계획을 다시 살펴보자.",
+    "get to know each other": "서로 알아가 보자.", "i'm taking it easy": "이번 주말에는 푹 쉬고 있어.",
+    "i was gonna": "전화하려고 했어.", "it's time to": "이제 갈 시간이야.",
+    "it's my fault": "내 잘못이야. 내가 고칠게.", "my bad": "미안, 내가 잊었어.",
+    "hear out": "내 말을 끝까지 들어줘.", "let it slide": "이번에는 그냥 넘어갈게.",
+    "what's wrong?": "무슨 일이야? 내가 도와줄까?", "is everything okay?": "괜찮아? 걱정돼 보여.",
+    "recommend": "좋은 카페 하나 추천해 줄래?", "afford": "새 휴대폰을 살 여유가 없어."
+  };
   var toastTimer = null;
   var photoUrl = null;
 
@@ -57,11 +74,6 @@
     var date = new Date(year, month - 1, day, 12);
     return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date.getTime() : null;
   }
-  function yesterdayKey() {
-    var d = new Date();
-    d.setDate(d.getDate() - 1);
-    return todayKey(d);
-  }
   function loadState() {
     try {
       var saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
@@ -72,14 +84,12 @@
       return {
         words: Array.isArray(saved.words) ? saved.words : [],
         wrongNotes: Array.isArray(saved.wrongNotes) ? saved.wrongNotes.filter(function (note) { return note && typeof note === "object"; }) : [],
-        streak: Number(saved.streak) || 0,
-        lastStudy: saved.lastStudy || "",
         day: saved.day || "",
         dayAnswers: Number(saved.dayAnswers) || 0,
         curatedSeeded: saved.curatedSeeded === true
       };
     } catch (e) {
-      return { words: [], wrongNotes: [], streak: 0, lastStudy: "", day: "", dayAnswers: 0, curatedSeeded: false };
+      return { words: [], wrongNotes: [], day: "", dayAnswers: 0, curatedSeeded: false };
     }
   }
   function persist() {
@@ -170,15 +180,13 @@
     document.querySelectorAll("[data-nav]").forEach(function (el) {
       el.classList.toggle("active", el.getAttribute("data-nav") === page);
     });
-    byId("pageLabel").textContent = { home: "홈", import: "가져오기", words: "내 단어장", study: "학습하기", mistakes: "오답노트" }[page];
+    byId("pageLabel").textContent = { home: "홈", import: "가져오기", words: "내 단어장", study: "학습하기", compose: "영작 연습", mistakes: "오답노트" }[page];
     if (page === "words") renderWords();
     if (page === "study") renderStudy();
+    if (page === "compose") renderCompose();
     if (page === "mistakes") renderWrongNotes();
     window.scrollTo({ top: 0, behavior: "smooth" });
     history.replaceState(null, "", "#" + page);
-  }
-  function effectiveStreak() {
-    return state.lastStudy === todayKey() || state.lastStudy === yesterdayKey() ? state.streak : 0;
   }
   function renderDashboard() {
     var daily = state.day === todayKey() ? state.dayAnswers : 0;
@@ -187,7 +195,6 @@
     byId("todaySubtext").textContent = daily >= 10 ? "오늘의 목표를 달성했어요! ✦" : daily ? (10 - Math.min(daily, 10)) + "단어만 더 보면 목표 달성" : "첫 단어를 기다리고 있어요";
     byId("totalWords").textContent = state.words.length;
     byId("sideWordCount").textContent = state.words.length;
-    byId("streakDays").textContent = effectiveStreak();
     byId("wrongNoteCount").textContent = state.wrongNotes.length;
     byId("sideMistakeCount").textContent = state.wrongNotes.length;
     var recent = state.words.slice().sort(function (a, b) { return (b.addedAt || 0) - (a.addedAt || 0); }).slice(0, 4);
@@ -202,7 +209,7 @@
       return;
     }
     holder.innerHTML = state.wrongNotes.slice().sort(function (a, b) { return Number(b.wrongAt || 0) - Number(a.wrongAt || 0); }).map(function (note) {
-      var mode = note.mode === "choice" ? "뜻 고르기" : note.mode === "memory" ? "기억 카드" : "단어 쓰기";
+      var mode = note.mode === "choice" ? "뜻 고르기" : note.mode === "memory" ? "기억 카드" : note.mode === "compose" ? "영작 연습" : "단어 쓰기";
       var date = Number(note.wrongAt) ? new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(Number(note.wrongAt))) : "";
       return '<article class="mistake-card"><div class="mistake-head"><div><span class="mistake-kind">' + mode + '</span><h2>' + escapeHtml(note.term) + '</h2><p>' + escapeHtml(note.meaning || "뜻이 없는 단어") + '</p></div><div class="mistake-meta">' + (date ? '<span>' + date + '</span>' : "") + '<span>' + (Number(note.misses) || 1) + '번 틀림</span></div></div><div class="mistake-answers"><div class="mistake-answer my-answer"><span>내 답</span><strong>' + escapeHtml(note.submittedAnswer || "답을 입력하지 않았어요") + '</strong></div><div class="mistake-answer right-answer"><span>정답</span><strong>' + escapeHtml(note.correctAnswer) + '</strong></div></div>' + (note.example ? '<div class="mistake-example"><span>회화 예문</span><p>' + escapeHtml(note.example) + '</p></div>' : "") + '</article>';
     }).join("");
@@ -623,13 +630,59 @@
     var today = todayKey();
     if (state.day !== today) { state.day = today; state.dayAnswers = 0; }
     state.dayAnswers++;
-    if (state.lastStudy !== today) {
-      state.streak = state.lastStudy === yesterdayKey() ? state.streak + 1 : 1;
-      state.lastStudy = today;
-    }
     study.feedback = { correct: correct, choiceIndex: choiceIndex };
     persist();
     renderStudy();
+  }
+  function startCompose() {
+    var eligible = state.words.filter(function (word) { return String(word.meaning || "").trim(); });
+    var guided = shuffle(eligible.filter(function (word) { return COMPOSE_PROMPTS[normalizeTerm(word.term)]; }));
+    var open = shuffle(eligible.filter(function (word) { return !COMPOSE_PROMPTS[normalizeTerm(word.term)]; }));
+    var pool = shuffle(guided.slice(0, 5).concat(open).concat(guided.slice(5)).slice(0, 10));
+    compose = { pool: pool, index: 0, confident: 0, draft: null };
+    renderCompose();
+  }
+  function renderCompose() {
+    var shell = byId("composeShell");
+    var eligible = state.words.filter(function (word) { return String(word.meaning || "").trim(); });
+    if (!eligible.length) {
+      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✎</div><h2>뜻이 있는 단어를 추가해 주세요</h2><p>단어와 한국어 뜻을 저장하면 영작 연습을 시작할 수 있어요.</p><button class="btn btn-dark" data-nav="import">단어 가져오기 →</button></div>';
+      return;
+    }
+    if (!compose) {
+      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✎</div><span class="kicker">YOUR WORDS, YOUR SENTENCES</span><h2>한국어를 영어로 써 볼까요?</h2><p>내 단어장의 뜻을 단서로 영어 문장을 직접 써 보세요.<br>답을 쓴 다음 단어와 회화 예문을 보며 스스로 확인해요.</p><button class="btn btn-dark" data-compose-start>영작 시작하기 →</button><div class="study-small">한 번에 최대 10문제 · 예문은 가능한 답 중 하나예요</div></div>';
+      return;
+    }
+    if (compose.index >= compose.pool.length) {
+      var total = compose.pool.length;
+      shell.innerHTML = '<div class="study-result"><div class="result-stars">✦ ✧ ✦</div><span class="kicker">WRITING COMPLETE</span><h2>영작 연습을 마쳤어요!</h2><p>내 문장과 예문을 비교한 것만으로도 좋은 연습이에요.<br>다시 보고 싶은 문장은 오답노트에서 확인해요.</p><div class="result-metrics"><span><strong>' + compose.confident + '/' + total + '</strong>잘 쓴 문장</span><span><strong>' + (total - compose.confident) + '</strong>다시 볼 문장</span></div><div class="study-result-actions"><button class="btn btn-dark" data-compose-again>새 문제 풀기 →</button><button class="btn btn-outline" data-nav="mistakes">오답노트 보기 →</button></div></div>';
+      compose = null;
+      return;
+    }
+    var word = compose.pool[compose.index];
+    var prompt = COMPOSE_PROMPTS[normalizeTerm(word.term)] || '“' + word.meaning + '”의 의미를 담아 짧은 영어 문장을 써 보세요.';
+    var answered = compose.draft !== null;
+    var example = String(word.example || "").trim();
+    shell.innerHTML = '<div class="study-card compose-card"><div class="study-head"><span>영작 연습</span><span>' + (compose.index + 1) + ' / ' + compose.pool.length + '</span></div><div class="study-progress"><span style="width:' + Math.round((compose.index / compose.pool.length) * 100) + '%"></span></div><span class="question-tag">한국어 → 영어</span><p class="question-prompt">한국어를 읽고 영어로 답해 보세요.</p><h2 class="compose-prompt">' + escapeHtml(prompt) + '</h2>' + (answered ? '<div class="compose-comparison"><div><span>내 문장</span><p>' + escapeHtml(compose.draft) + '</p></div><div><span>이 단어로 쓴 예문</span><p>' + escapeHtml(example || "저장된 예문이 없어요. 아래 단어를 확인해 주세요.") + '</p><small>활용 단어: ' + escapeHtml(word.term) + '</small></div></div><p class="compose-guidance">예문과 똑같지 않아도 괜찮아요. 뜻이 통하고 문장이 자연스럽다면 잘 쓴 문장이에요.</p><div class="compose-actions"><button class="btn btn-dark" data-compose-confident>잘 썼어요 →</button><button class="btn btn-outline" data-compose-review>다시 연습할래요 →</button></div>' : '<form id="composeForm" class="compose-form"><label for="composeInput">내 영어 문장</label><textarea id="composeInput" rows="3" placeholder="영어로 자유롭게 써 보세요" aria-label="영어 문장" required></textarea><button class="btn btn-dark" type="submit">예문 확인하기 →</button></form>') + '</div>';
+  }
+  function finishComposeQuestion(confident) {
+    if (!compose || compose.draft === null) return;
+    var word = compose.pool[compose.index];
+    if (confident) compose.confident++;
+    else {
+      var wordId = String(word.id || normalizeTerm(word.term));
+      var note = state.wrongNotes.find(function (item) { return item.wordId === wordId; });
+      var details = { wordId: wordId, term: word.term, meaning: word.meaning || "", example: word.example || "", mode: "compose", submittedAnswer: compose.draft, correctAnswer: word.example || word.term, wrongAt: Date.now() };
+      if (note) Object.assign(note, details, { misses: (Number(note.misses) || 1) + 1 });
+      else state.wrongNotes.push(Object.assign({ misses: 1 }, details));
+    }
+    var today = todayKey();
+    if (state.day !== today) { state.day = today; state.dayAnswers = 0; }
+    state.dayAnswers++;
+    compose.index++;
+    compose.draft = null;
+    persist();
+    renderCompose();
   }
   function initEvents() {
     document.addEventListener("click", function (event) {
@@ -721,11 +774,24 @@
       var answer = normalizeTerm(submittedAnswer).replace(/[^a-z' -]/g, "");
       recordAnswer(answer === normalizeTerm(study.pool[study.index].term), -1, submittedAnswer);
     });
+    byId("composeShell").addEventListener("click", function (e) {
+      if (e.target.closest("[data-compose-start], [data-compose-again]")) { startCompose(); return; }
+      if (e.target.closest("[data-compose-confident]")) { finishComposeQuestion(true); return; }
+      if (e.target.closest("[data-compose-review]")) { finishComposeQuestion(false); }
+    });
+    byId("composeShell").addEventListener("submit", function (e) {
+      if (e.target.id !== "composeForm" || !compose || compose.draft !== null) return;
+      e.preventDefault();
+      var answer = byId("composeInput").value.trim();
+      if (!answer) { toast("영어 문장을 먼저 써 주세요."); return; }
+      compose.draft = answer;
+      renderCompose();
+    });
   }
   var curatedChanged = enrichSavedWords();
   formatDate();
   initEvents();
   if (curatedChanged) persist();
   else renderDashboard();
-  go(["home", "import", "words", "study", "mistakes"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home");
+  go(["home", "import", "words", "study", "compose", "mistakes"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home");
 })();
