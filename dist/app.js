@@ -46,6 +46,17 @@
     var d = date || new Date();
     return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
   }
+  function wordDateKey(word) {
+    var addedAt = Number(word.addedAt);
+    return Number.isFinite(addedAt) && addedAt > 0 ? todayKey(new Date(addedAt)) : "unknown";
+  }
+  function dateAtNoon(value) {
+    var match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    var year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+    var date = new Date(year, month - 1, day, 12);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date.getTime() : null;
+  }
   function yesterdayKey() {
     var d = new Date();
     d.setDate(d.getDate() - 1);
@@ -443,11 +454,8 @@
     var dateFormatter = new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
     var groups = new Map();
     list.forEach(function (word) {
-      var addedAt = Number(word.addedAt);
-      var hasDate = Number.isFinite(addedAt) && addedAt > 0;
-      var date = hasDate ? new Date(addedAt) : null;
-      var key = hasDate ? todayKey(date) : "unknown";
-      if (!groups.has(key)) groups.set(key, { label: hasDate ? dateFormatter.format(date) : "날짜 정보 없음", words: [] });
+      var key = wordDateKey(word);
+      if (!groups.has(key)) groups.set(key, { key: key, label: key === "unknown" ? "날짜 정보 없음" : dateFormatter.format(new Date(Number(word.addedAt))), words: [] });
       groups.get(key).words.push(word);
     });
     holder.innerHTML = Array.from(groups.values()).map(function (group) {
@@ -456,7 +464,7 @@
         var marker = level >= 3 ? "mastered" : w.dueAt && w.dueAt <= now ? "ready" : "";
         return '<article class="word-row" data-id="' + escapeHtml(w.id) + '"><div class="word-main"><strong>' + escapeHtml(w.term) + '</strong><small>' + (level >= 3 ? "익숙한 단어" : level ? "복습 중" : "새 단어") + '</small></div><div class="word-meaning">' + escapeHtml(w.meaning || "뜻을 추가해 주세요") + '</div><div class="word-example"><span>회화 예문</span>' + escapeHtml(w.example || "예문을 추가해 보세요") + '</div><div class="word-actions"><span class="mastery-dot ' + marker + '" aria-hidden="true"></span><button data-edit="' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.term) + ' 수정">✎</button><button data-delete="' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.term) + ' 삭제">×</button></div></article>';
       }).join("");
-      return '<section class="word-date-group" aria-label="' + escapeHtml(group.label) + '"><div class="word-date-heading"><h2>' + escapeHtml(group.label) + '</h2><span>' + group.words.length + '개</span></div><div class="word-date-items">' + rows + '</div></section>';
+      return '<section class="word-date-group" data-date-key="' + group.key + '" aria-label="' + escapeHtml(group.label) + '"><div class="word-date-heading"><h2>' + escapeHtml(group.label) + '</h2><span>' + group.words.length + '개</span><button type="button" data-edit-group-date="' + group.key + '" aria-label="' + escapeHtml(group.label) + ' 날짜 수정">날짜 수정</button></div><div class="word-date-items">' + rows + '</div></section>';
     }).join("");
   }
   function editWord(id) {
@@ -464,7 +472,8 @@
     var row = Array.from(document.querySelectorAll(".word-row")).find(function (el) { return el.getAttribute("data-id") === id; });
     if (!word || !row) return;
     if (row.querySelector(".word-edit")) { row.querySelector(".word-edit").remove(); return; }
-    row.insertAdjacentHTML("beforeend", '<div class="word-edit"><label>영단어<input data-edit-field="term" value="' + escapeHtml(word.term) + '"></label><label>뜻<input data-edit-field="meaning" value="' + escapeHtml(word.meaning) + '"></label><label>예문<input data-edit-field="example" value="' + escapeHtml(word.example) + '"></label><button class="btn btn-dark" data-save-word="' + escapeHtml(id) + '">저장</button></div>');
+    var savedDate = wordDateKey(word);
+    row.insertAdjacentHTML("beforeend", '<div class="word-edit"><label>영단어<input data-edit-field="term" value="' + escapeHtml(word.term) + '"></label><label>뜻<input data-edit-field="meaning" value="' + escapeHtml(word.meaning) + '"></label><label>예문<input data-edit-field="example" value="' + escapeHtml(word.example) + '"></label><label>추가 날짜<input type="date" data-edit-field="date" value="' + (savedDate === "unknown" ? "" : savedDate) + '"></label><button class="btn btn-dark" data-save-word="' + escapeHtml(id) + '">저장</button></div>');
   }
   function saveWord(id) {
     var word = state.words.find(function (w) { return w.id === id; });
@@ -475,10 +484,39 @@
     if (!term || !/[A-Za-z]/.test(term)) { toast("영단어를 입력해 주세요."); return; }
     var duplicate = state.words.some(function (w) { return w.id !== id && normalizeTerm(w.term) === normalizeTerm(term); });
     if (duplicate) { toast("이미 같은 단어가 있어요."); return; }
+    var dateValue = edit.querySelector('[data-edit-field="date"]').value;
+    var currentDate = wordDateKey(word);
+    if (!dateValue && currentDate !== "unknown") { toast("추가 날짜를 선택해 주세요."); return; }
+    var changedDate = dateValue && dateValue !== currentDate ? dateAtNoon(dateValue) : null;
+    if (dateValue && dateValue !== currentDate && changedDate === null) { toast("올바른 날짜를 선택해 주세요."); return; }
     word.term = term;
     word.meaning = edit.querySelector('[data-edit-field="meaning"]').value.trim();
     word.example = edit.querySelector('[data-edit-field="example"]').value.trim();
+    if (changedDate !== null) word.addedAt = changedDate;
     persist(); renderWords(); toast("단어를 수정했어요.");
+  }
+  function dateGroup(key) {
+    return Array.from(document.querySelectorAll(".word-date-group")).find(function (group) { return group.getAttribute("data-date-key") === key; });
+  }
+  function editGroupDate(key) {
+    var group = dateGroup(key);
+    if (!group) return;
+    if (group.querySelector(".group-date-edit")) { group.querySelector(".group-date-edit").remove(); return; }
+    document.querySelectorAll(".group-date-edit").forEach(function (editor) { editor.remove(); });
+    var count = state.words.filter(function (word) { return wordDateKey(word) === key; }).length;
+    group.querySelector(".word-date-heading").insertAdjacentHTML("afterend", '<div class="group-date-edit"><label>새 날짜<input type="date" data-group-date-input value="' + (key === "unknown" ? "" : key) + '"></label><p>이 날짜에 저장된 모든 단어 ' + count + '개에 적용돼요.</p><button type="button" class="btn btn-dark" data-save-group-date="' + key + '">적용</button><button type="button" class="btn btn-outline" data-cancel-group-date>취소</button></div>');
+    group.querySelector("[data-group-date-input]").focus();
+  }
+  function saveGroupDate(key) {
+    var group = dateGroup(key);
+    if (!group) return;
+    var dateValue = group.querySelector("[data-group-date-input]").value;
+    var addedAt = dateAtNoon(dateValue);
+    if (addedAt === null) { toast("올바른 날짜를 선택해 주세요."); return; }
+    if (dateValue === key) { group.querySelector(".group-date-edit").remove(); return; }
+    var words = state.words.filter(function (word) { return wordDateKey(word) === key; }).sort(function (a, b) { return Number(b.addedAt || 0) - Number(a.addedAt || 0); });
+    words.forEach(function (word, index) { word.addedAt = addedAt + words.length - index; });
+    persist(); renderWords(); toast(words.length + "개 단어의 날짜를 바꿨어요.");
   }
   function exportCsv() {
     if (!state.words.length) { toast("내보낼 단어가 없어요."); return; }
@@ -644,6 +682,12 @@
       });
     });
     byId("wordList").addEventListener("click", function (e) {
+      var editDate = e.target.closest("[data-edit-group-date]");
+      var saveDate = e.target.closest("[data-save-group-date]");
+      var cancelDate = e.target.closest("[data-cancel-group-date]");
+      if (editDate) { editGroupDate(editDate.getAttribute("data-edit-group-date")); return; }
+      if (saveDate) { saveGroupDate(saveDate.getAttribute("data-save-group-date")); return; }
+      if (cancelDate) { cancelDate.closest(".group-date-edit").remove(); return; }
       var edit = e.target.closest("[data-edit]");
       var del = e.target.closest("[data-delete]");
       var save = e.target.closest("[data-save-word]");
