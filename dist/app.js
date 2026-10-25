@@ -60,6 +60,7 @@
       }
       return {
         words: Array.isArray(saved.words) ? saved.words : [],
+        wrongNotes: Array.isArray(saved.wrongNotes) ? saved.wrongNotes.filter(function (note) { return note && typeof note === "object"; }) : [],
         streak: Number(saved.streak) || 0,
         lastStudy: saved.lastStudy || "",
         day: saved.day || "",
@@ -67,7 +68,7 @@
         curatedSeeded: saved.curatedSeeded === true
       };
     } catch (e) {
-      return { words: [], streak: 0, lastStudy: "", day: "", dayAnswers: 0, curatedSeeded: false };
+      return { words: [], wrongNotes: [], streak: 0, lastStudy: "", day: "", dayAnswers: 0, curatedSeeded: false };
     }
   }
   function persist() {
@@ -158,9 +159,10 @@
     document.querySelectorAll("[data-nav]").forEach(function (el) {
       el.classList.toggle("active", el.getAttribute("data-nav") === page);
     });
-    byId("pageLabel").textContent = { home: "홈", import: "가져오기", words: "내 단어장", study: "학습하기" }[page];
+    byId("pageLabel").textContent = { home: "홈", import: "가져오기", words: "내 단어장", study: "학습하기", mistakes: "오답노트" }[page];
     if (page === "words") renderWords();
     if (page === "study") renderStudy();
+    if (page === "mistakes") renderWrongNotes();
     window.scrollTo({ top: 0, behavior: "smooth" });
     history.replaceState(null, "", "#" + page);
   }
@@ -175,11 +177,24 @@
     byId("totalWords").textContent = state.words.length;
     byId("sideWordCount").textContent = state.words.length;
     byId("streakDays").textContent = effectiveStreak();
-    byId("dueWords").textContent = state.words.filter(function (word) { return Number(word.dueAt || 0) <= Date.now(); }).length;
+    byId("wrongNoteCount").textContent = state.wrongNotes.length;
+    byId("sideMistakeCount").textContent = state.wrongNotes.length;
     var recent = state.words.slice().sort(function (a, b) { return (b.addedAt || 0) - (a.addedAt || 0); }).slice(0, 4);
     byId("recentWords").innerHTML = recent.length ? recent.map(function (w) {
       return '<div class="recent-item"><strong>' + escapeHtml(w.term) + '</strong><span>' + escapeHtml(w.meaning || "뜻을 추가해 주세요") + '</span></div>';
     }).join("") : '<p class="empty-mini">아직 단어가 없어요.<br>사진이나 엑셀을 올려 첫 단어장을 만들어 보세요.</p>';
+  }
+  function renderWrongNotes() {
+    var holder = byId("mistakeList");
+    if (!state.wrongNotes.length) {
+      holder.innerHTML = '<div class="empty-state"><div class="empty-illustration">↺</div><h3>아직 오답이 없어요</h3><p>이제부터 학습에서 틀린 문제가 답과 정답과 함께 이곳에 모여요.</p><button class="btn btn-dark" data-nav="study">학습하러 가기 →</button></div>';
+      return;
+    }
+    holder.innerHTML = state.wrongNotes.slice().sort(function (a, b) { return Number(b.wrongAt || 0) - Number(a.wrongAt || 0); }).map(function (note) {
+      var mode = note.mode === "choice" ? "뜻 고르기" : note.mode === "memory" ? "기억 카드" : "단어 쓰기";
+      var date = Number(note.wrongAt) ? new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(Number(note.wrongAt))) : "";
+      return '<article class="mistake-card"><div class="mistake-head"><div><span class="mistake-kind">' + mode + '</span><h2>' + escapeHtml(note.term) + '</h2><p>' + escapeHtml(note.meaning || "뜻이 없는 단어") + '</p></div><div class="mistake-meta">' + (date ? '<span>' + date + '</span>' : "") + '<span>' + (Number(note.misses) || 1) + '번 틀림</span></div></div><div class="mistake-answers"><div class="mistake-answer my-answer"><span>내 답</span><strong>' + escapeHtml(note.submittedAnswer || "답을 입력하지 않았어요") + '</strong></div><div class="mistake-answer right-answer"><span>정답</span><strong>' + escapeHtml(note.correctAnswer) + '</strong></div></div>' + (note.example ? '<div class="mistake-example"><span>회화 예문</span><p>' + escapeHtml(note.example) + '</p></div>' : "") + '</article>';
+    }).join("");
   }
   function openPicker(kind) {
     go("import");
@@ -417,7 +432,6 @@
     var now = Date.now();
     var list = state.words.slice().sort(function (a, b) { return (b.addedAt || 0) - (a.addedAt || 0); }).filter(function (w) {
       if (search && !(normalizeTerm(w.term + " " + w.meaning + " " + w.example).includes(search))) return false;
-      if (currentFilter === "due" && Number(w.dueAt || 0) > now) return false;
       if (currentFilter === "mastered" && Number(w.level || 0) < 3) return false;
       return true;
     });
@@ -494,12 +508,11 @@
       return;
     }
     if (!study) {
-      var due = state.words.filter(function (w) { return Number(w.dueAt || 0) <= Date.now(); }).length;
-      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✦</div><span class="kicker">READY FOR A QUICK ROUND?</span><h2>오늘의 단어를 만나볼까요?</h2><p>헷갈리는 단어를 먼저 보고, 뜻이 있다면 객관식과 타이핑으로 연습해요.<br>한 라운드는 최대 10문제예요.</p><button class="btn btn-dark" data-study-start>학습 시작하기 →</button><div class="study-small">지금 복습할 단어 ' + due + '개 · 전체 ' + state.words.length + '개</div></div>';
+      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✦</div><span class="kicker">READY FOR A QUICK ROUND?</span><h2>오늘의 단어를 만나볼까요?</h2><p>헷갈리는 단어를 먼저 보고, 뜻이 있다면 객관식과 타이핑으로 연습해요.<br>한 라운드는 최대 10문제예요.</p><button class="btn btn-dark" data-study-start>학습 시작하기 →</button><div class="study-small">단어장 ' + state.words.length + '개 · 틀린 문제는 오답노트에 모여요</div></div>';
       return;
     }
     if (study.index >= study.pool.length) {
-      shell.innerHTML = '<div class="study-result"><div class="result-stars">✦ ✧ ✦</div><span class="kicker">ROUND COMPLETE</span><h2>오늘도 해냈어요!</h2><p>조금씩 반복한 단어가 오래 남아요.<br>헷갈린 단어는 다음 학습에서 다시 만나요.</p><div class="result-metrics"><span><strong>' + study.correct + '/' + study.pool.length + '</strong>기억한 단어</span><span><strong>' + (study.pool.length - study.correct) + '</strong>다시 볼 단어</span></div><button class="btn btn-dark" data-study-again>한 번 더 학습 →</button></div>';
+      shell.innerHTML = '<div class="study-result"><div class="result-stars">✦ ✧ ✦</div><span class="kicker">ROUND COMPLETE</span><h2>오늘도 해냈어요!</h2><p>조금씩 반복한 단어가 오래 남아요.<br>헷갈린 단어는 오답노트에서 다시 살펴봐요.</p><div class="result-metrics"><span><strong>' + study.correct + '/' + study.pool.length + '</strong>기억한 단어</span><span><strong>' + (study.pool.length - study.correct) + '</strong>틀린 문제</span></div><div class="study-result-actions"><button class="btn btn-dark" data-study-again>한 번 더 학습 →</button><button class="btn btn-outline" data-nav="mistakes">오답노트 보기 →</button></div></div>';
       study = null;
       return;
     }
@@ -523,13 +536,13 @@
       body = '<span class="question-tag">기억 카드</span><p class="question-prompt">단어를 잠깐 보고 기억해 보세요.</p><h2 class="question-word">' + (study.hidden || answered ? '••••••' : escapeHtml(word.term)) + '</h2><p class="memory-prompt">' + (study.hidden || answered ? "방금 본 단어를 직접 써 보세요." : "준비되면 단어를 숨기고 써 보세요. 뜻을 추가하면 다른 퀴즈도 풀 수 있어요.") + '</p>' + (answered ? "" : study.hidden ? '<form class="answer-form" id="answerForm"><input id="answerInput" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="기억한 영단어" placeholder="기억한 단어를 입력해 주세요" required><button class="btn btn-dark" type="submit">확인 →</button></form>' : '<button class="btn btn-outline" data-memory-hide>단어 숨기기 →</button>');
     }
     if (answered) {
-      body += '<div class="feedback' + (study.feedback.correct ? "" : " wrong") + '">' + (study.feedback.correct ? "정답이에요!" : "괜찮아요, 다음에 다시 만나요.") + '<small>정답: ' + escapeHtml(word.term) + (word.meaning ? " · " + escapeHtml(word.meaning) : "") + '</small>' + (word.example ? '<span class="study-example">' + escapeHtml(word.example) + '</span>' : "") + '</div>';
+      body += '<div class="feedback' + (study.feedback.correct ? "" : " wrong") + '">' + (study.feedback.correct ? "정답이에요!" : "오답노트에 모아뒀어요.") + '<small>정답: ' + escapeHtml(word.term) + (word.meaning ? " · " + escapeHtml(word.meaning) : "") + '</small>' + (word.example ? '<span class="study-example">' + escapeHtml(word.example) + '</span>' : "") + '</div>';
     }
     body += '<div class="question-bottom"><small>' + (answered ? "헷갈린 단어는 더 자주 나와요." : "천천히 생각해도 괜찮아요.") + '</small>' + (answered ? '<button class="btn btn-dark" data-study-next>다음 단어 →</button>' : "") + '</div></div>';
     shell.innerHTML = head + body;
     if (mode !== "choice" && (study.hidden || mode === "type") && !answered) byId("answerInput").focus();
   }
-  function recordAnswer(correct, choiceIndex) {
+  function recordAnswer(correct, choiceIndex, submittedAnswer) {
     if (!study || study.feedback) return;
     var word = study.pool[study.index];
     var intervals = [1, 3, 7, 14, 30, 60];
@@ -540,6 +553,21 @@
     } else {
       word.level = 0;
       word.dueAt = Date.now() + 3600000;
+      var mode = currentQuestionMode(word);
+      var wordId = String(word.id || normalizeTerm(word.term));
+      var note = state.wrongNotes.find(function (item) { return item.wordId === wordId; });
+      var details = {
+        wordId: wordId,
+        term: word.term,
+        meaning: word.meaning || "",
+        example: word.example || "",
+        mode: mode,
+        submittedAnswer: mode === "choice" ? String(study.choiceOptions[choiceIndex] || "") : String(submittedAnswer || "").trim(),
+        correctAnswer: mode === "choice" ? word.meaning : word.term,
+        wrongAt: Date.now()
+      };
+      if (note) Object.assign(note, details, { misses: (Number(note.misses) || 1) + 1 });
+      else state.wrongNotes.push(Object.assign({ misses: 1 }, details));
     }
     var today = todayKey();
     if (state.day !== today) { state.day = today; state.dayAnswers = 0; }
@@ -632,8 +660,9 @@
     byId("studyShell").addEventListener("submit", function (e) {
       if (e.target.id !== "answerForm") return;
       e.preventDefault();
-      var answer = normalizeTerm(byId("answerInput").value).replace(/[^a-z' -]/g, "");
-      recordAnswer(answer === normalizeTerm(study.pool[study.index].term), -1);
+      var submittedAnswer = byId("answerInput").value.trim();
+      var answer = normalizeTerm(submittedAnswer).replace(/[^a-z' -]/g, "");
+      recordAnswer(answer === normalizeTerm(study.pool[study.index].term), -1, submittedAnswer);
     });
   }
   var curatedChanged = enrichSavedWords();
@@ -641,5 +670,5 @@
   initEvents();
   if (curatedChanged) persist();
   else renderDashboard();
-  go(["home", "import", "words", "study"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home");
+  go(["home", "import", "words", "study", "mistakes"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home");
 })();
