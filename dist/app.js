@@ -2,6 +2,8 @@
   "use strict";
 
   var STORE_KEY = "wordkit-v1";
+  var DAILY_GOAL = 30;
+  var STANDARD_STUDY_SIZE = 30;
   var SAMPLE_WORDS = [
     { term: "curiosity", meaning: "호기심", example: "Curiosity leads to discovery." },
     { term: "discover", meaning: "발견하다", example: "We discover something new every day." },
@@ -190,9 +192,9 @@
   }
   function renderDashboard() {
     var daily = state.day === todayKey() ? state.dayAnswers : 0;
-    byId("todayLearned").textContent = Math.min(daily, 10);
-    byId("todayProgressBar").style.width = Math.min(100, daily * 10) + "%";
-    byId("todaySubtext").textContent = daily >= 10 ? "오늘의 목표를 달성했어요! ✦" : daily ? (10 - Math.min(daily, 10)) + "단어만 더 보면 목표 달성" : "첫 단어를 기다리고 있어요";
+    byId("todayLearned").textContent = Math.min(daily, DAILY_GOAL);
+    byId("todayProgressBar").style.width = Math.min(100, daily / DAILY_GOAL * 100) + "%";
+    byId("todaySubtext").textContent = daily >= DAILY_GOAL ? "오늘의 목표를 달성했어요! ✦" : daily ? (DAILY_GOAL - Math.min(daily, DAILY_GOAL)) + "단어만 더 보면 목표 달성" : "첫 단어를 기다리고 있어요";
     byId("totalWords").textContent = state.words.length;
     byId("sideWordCount").textContent = state.words.length;
     byId("wrongNoteCount").textContent = state.wrongNotes.length;
@@ -550,7 +552,7 @@
     var now = Date.now();
     var due = shuffle(selected.filter(function (w) { return Number(w.dueAt || 0) <= now; }));
     var later = shuffle(selected.filter(function (w) { return Number(w.dueAt || 0) > now; }));
-    var pool = due.concat(later).slice(0, 10);
+    var pool = dateKey == null ? due.concat(later).slice(0, STANDARD_STUDY_SIZE) : due.concat(later);
     study = { pool: pool, index: 0, correct: 0, feedback: null, hidden: false, choiceOptions: null, dateKey: dateKey == null ? null : dateKey, dateCount: selected.length };
     go("study"); renderStudy();
   }
@@ -574,7 +576,7 @@
         var label = entry[0] === "unknown" ? "날짜 정보 없음" : entry[0];
         return '<button type="button" data-study-date="' + entry[0] + '"><strong>' + escapeHtml(label) + '</strong><span>' + entry[1] + '개 단어 →</span></button>';
       }).join("");
-      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✦</div><span class="kicker">READY FOR A QUICK ROUND?</span><h2>오늘의 단어를 만나볼까요?</h2><p>전체 단어로 학습하거나, 업로드한 날짜를 골라 그날의 단어만 공부해요.<br>한 라운드는 최대 10문제예요.</p><button class="btn btn-dark" data-study-start>전체 단어 학습 →</button><div class="study-small">단어장 ' + state.words.length + '개 · 틀린 문제는 오답노트에 모여요</div><div class="study-date-picker"><h3>날짜별로 학습하기</h3><div class="study-date-grid">' + dateButtons + '</div></div></div>';
+      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✦</div><span class="kicker">READY FOR A QUICK ROUND?</span><h2>오늘의 단어를 만나볼까요?</h2><p>전체 학습은 최대 30문제예요.<br>날짜를 고르면 그날의 단어를 전부 공부할 수 있어요.</p><button class="btn btn-dark" data-study-start>전체 단어 학습 →</button><div class="study-small">단어장 ' + state.words.length + '개 · 틀린 문제는 오답노트에 모여요</div><div class="study-date-picker"><h3>날짜별로 학습하기</h3><div class="study-date-grid">' + dateButtons + '</div></div></div>';
       return;
     }
     if (study.index >= study.pool.length) {

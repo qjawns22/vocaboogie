@@ -11,7 +11,7 @@
   <script src="./xlsx.full.min.js" defer></script>
   <script src="./tesseract.min.js" defer></script>
   <script src="./curated-vocab.js" defer></script>
-  <script src="./app.js?v=10" defer></script>
+  <script src="./app.js?v=11" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -49,7 +49,7 @@
           <div class="hero-copy">
             <div class="eyebrow"><span class="eyebrow-line"></span> YOUR WORDS, YOUR WAY</div>
             <h1 id="homeTitle">사진 속 단어가<br><em>내 실력</em>이 되는 곳.</h1>
-            <p>손글씨 사진이나 엑셀 파일을 올려보세요.<br>단어장을 만들고, 하루 10개씩 가볍게 외워요.</p>
+            <p>손글씨 사진이나 엑셀 파일을 올려보세요.<br>단어장을 만들고, 내 속도에 맞춰 외워요.</p>
             <div class="hero-actions">
               <button class="btn btn-dark" data-nav="import">단어 가져오기 <span aria-hidden="true">↗</span></button>
               <button class="btn btn-text" data-nav="study">바로 학습하기 <span aria-hidden="true">→</span></button>
@@ -68,7 +68,7 @@
           <button class="plain-link" data-nav="study">학습 시작 <span aria-hidden="true">↗</span></button>
         </div>
         <div class="stats-grid">
-          <div class="stat-card stat-green"><div class="stat-top"><span>오늘의 학습</span><span class="stat-symbol">↗</span></div><div class="stat-value"><strong id="todayLearned">0</strong><span>/ 10 단어</span></div><div class="stat-track"><span id="todayProgressBar"></span></div><small id="todaySubtext">첫 단어를 기다리고 있어요</small></div>
+          <div class="stat-card stat-green"><div class="stat-top"><span>오늘의 학습</span><span class="stat-symbol">↗</span></div><div class="stat-value"><strong id="todayLearned">0</strong><span>/ 30 단어</span></div><div class="stat-track"><span id="todayProgressBar"></span></div><small id="todaySubtext">첫 단어를 기다리고 있어요</small></div>
           <div class="stat-card"><div class="stat-top"><span>내 단어장</span><span class="stat-symbol">▤</span></div><div class="stat-value"><strong id="totalWords">0</strong><span>개</span></div><small>차곡차곡 쌓이는 나만의 단어</small></div>
           <button class="stat-card stat-link compose-link" data-nav="compose"><span class="stat-top"><span>영작 연습</span><span class="stat-symbol">✎</span></span><span class="compose-card-title">한국어를 보고<br>영어로 써보기</span><small>내 단어장으로 연습하기 →</small></button>
           <button class="stat-card stat-link" data-nav="mistakes"><span class="stat-top"><span>오답노트</span><span class="stat-symbol">↺</span></span><span class="stat-value"><strong id="wrongNoteCount">0</strong><span>개</span></span><small>틀린 문제와 정답 다시 보기 →</small></button>
@@ -117,7 +117,7 @@
       </section>
 
       <section class="page" id="page-study" aria-labelledby="studyTitle">
-        <div class="page-intro"><span class="kicker">A LITTLE EVERY DAY</span><h1 id="studyTitle">가볍게, 오래 기억해요<span class="accent-period">.</span></h1><p>전체 단어 또는 업로드한 날짜를 골라 10문제씩 짧게 공부해요.</p></div>
+        <div class="page-intro"><span class="kicker">A LITTLE EVERY DAY</span><h1 id="studyTitle">가볍게, 오래 기억해요<span class="accent-period">.</span></h1><p>전체 학습은 한 번에 최대 30문제, 날짜별 학습은 그날의 단어를 모두 공부해요.</p></div>
         <div class="study-shell" id="studyShell"></div>
       </section>
 
