@@ -471,7 +471,7 @@
         var marker = level >= 3 ? "mastered" : w.dueAt && w.dueAt <= now ? "ready" : "";
         return '<article class="word-row" data-id="' + escapeHtml(w.id) + '"><div class="word-main"><strong>' + escapeHtml(w.term) + '</strong><small>' + (level >= 3 ? "익숙한 단어" : level ? "복습 중" : "새 단어") + '</small></div><div class="word-meaning">' + escapeHtml(w.meaning || "뜻을 추가해 주세요") + '</div><div class="word-example"><span>회화 예문</span>' + escapeHtml(w.example || "예문을 추가해 보세요") + '</div><div class="word-actions"><span class="mastery-dot ' + marker + '" aria-hidden="true"></span><button data-edit="' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.term) + ' 수정">✎</button><button data-delete="' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.term) + ' 삭제">×</button></div></article>';
       }).join("");
-      return '<section class="word-date-group" data-date-key="' + group.key + '" aria-label="' + escapeHtml(group.label) + '"><div class="word-date-heading"><h2>' + escapeHtml(group.label) + '</h2><span>' + group.words.length + '개</span><button type="button" data-edit-group-date="' + group.key + '" aria-label="' + escapeHtml(group.label) + ' 날짜 수정">날짜 수정</button></div><div class="word-date-items">' + rows + '</div></section>';
+      return '<section class="word-date-group" data-date-key="' + group.key + '" aria-label="' + escapeHtml(group.label) + '"><div class="word-date-heading"><h2>' + escapeHtml(group.label) + '</h2><span>' + group.words.length + '개</span><button type="button" class="date-study-button" data-study-date="' + group.key + '" aria-label="' + escapeHtml(group.label) + ' 단어만 학습">이 날짜 학습 →</button><button type="button" data-edit-group-date="' + group.key + '" aria-label="' + escapeHtml(group.label) + ' 날짜 수정">날짜 수정</button></div><div class="word-date-items">' + rows + '</div></section>';
     }).join("");
   }
   function editWord(id) {
@@ -544,18 +544,20 @@
     }
     return arr;
   }
-  function startStudy() {
-    if (!state.words.length) { go("import"); toast("먼저 단어를 추가해 주세요."); return; }
+  function startStudy(dateKey) {
+    var selected = dateKey == null ? state.words : state.words.filter(function (word) { return wordDateKey(word) === dateKey; });
+    if (!selected.length) { go("words"); toast("선택한 날짜에 단어가 없어요."); return; }
     var now = Date.now();
-    var due = shuffle(state.words.filter(function (w) { return Number(w.dueAt || 0) <= now; }));
-    var later = shuffle(state.words.filter(function (w) { return Number(w.dueAt || 0) > now; }));
+    var due = shuffle(selected.filter(function (w) { return Number(w.dueAt || 0) <= now; }));
+    var later = shuffle(selected.filter(function (w) { return Number(w.dueAt || 0) > now; }));
     var pool = due.concat(later).slice(0, 10);
-    study = { pool: pool, index: 0, correct: 0, feedback: null, hidden: false, choiceOptions: null };
+    study = { pool: pool, index: 0, correct: 0, feedback: null, hidden: false, choiceOptions: null, dateKey: dateKey == null ? null : dateKey, dateCount: selected.length };
     go("study"); renderStudy();
   }
   function currentQuestionMode(word) {
-    var withMeaning = state.words.filter(function (w) { return w.meaning; });
-    if (word.meaning && withMeaning.length >= 4 && study.index % 2 === 0) return "choice";
+    var source = study.dateKey === null ? state.words : study.pool;
+    var meanings = new Set(source.filter(function (w) { return w.meaning; }).map(function (w) { return w.meaning; }));
+    if (word.meaning && meanings.size >= 4 && study.index % 2 === 0) return "choice";
     if (word.meaning) return "type";
     return "memory";
   }
@@ -566,22 +568,31 @@
       return;
     }
     if (!study) {
-      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✦</div><span class="kicker">READY FOR A QUICK ROUND?</span><h2>오늘의 단어를 만나볼까요?</h2><p>헷갈리는 단어를 먼저 보고, 뜻이 있다면 객관식과 타이핑으로 연습해요.<br>한 라운드는 최대 10문제예요.</p><button class="btn btn-dark" data-study-start>학습 시작하기 →</button><div class="study-small">단어장 ' + state.words.length + '개 · 틀린 문제는 오답노트에 모여요</div></div>';
+      var dates = new Map();
+      state.words.forEach(function (word) { var key = wordDateKey(word); dates.set(key, (dates.get(key) || 0) + 1); });
+      var dateButtons = Array.from(dates).sort(function (a, b) { return a[0] === "unknown" ? 1 : b[0] === "unknown" ? -1 : b[0].localeCompare(a[0]); }).map(function (entry) {
+        var label = entry[0] === "unknown" ? "날짜 정보 없음" : entry[0];
+        return '<button type="button" data-study-date="' + entry[0] + '"><strong>' + escapeHtml(label) + '</strong><span>' + entry[1] + '개 단어 →</span></button>';
+      }).join("");
+      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✦</div><span class="kicker">READY FOR A QUICK ROUND?</span><h2>오늘의 단어를 만나볼까요?</h2><p>전체 단어로 학습하거나, 업로드한 날짜를 골라 그날의 단어만 공부해요.<br>한 라운드는 최대 10문제예요.</p><button class="btn btn-dark" data-study-start>전체 단어 학습 →</button><div class="study-small">단어장 ' + state.words.length + '개 · 틀린 문제는 오답노트에 모여요</div><div class="study-date-picker"><h3>날짜별로 학습하기</h3><div class="study-date-grid">' + dateButtons + '</div></div></div>';
       return;
     }
     if (study.index >= study.pool.length) {
-      shell.innerHTML = '<div class="study-result"><div class="result-stars">✦ ✧ ✦</div><span class="kicker">ROUND COMPLETE</span><h2>오늘도 해냈어요!</h2><p>조금씩 반복한 단어가 오래 남아요.<br>헷갈린 단어는 오답노트에서 다시 살펴봐요.</p><div class="result-metrics"><span><strong>' + study.correct + '/' + study.pool.length + '</strong>기억한 단어</span><span><strong>' + (study.pool.length - study.correct) + '</strong>틀린 문제</span></div><div class="study-result-actions"><button class="btn btn-dark" data-study-again>한 번 더 학습 →</button><button class="btn btn-outline" data-nav="mistakes">오답노트 보기 →</button></div></div>';
+      var scope = study.dateKey === null ? "전체 단어" : study.dateKey === "unknown" ? "날짜 정보 없음" : study.dateKey;
+      shell.innerHTML = '<div class="study-result"><div class="result-stars">✦ ✧ ✦</div><span class="kicker">ROUND COMPLETE · ' + escapeHtml(scope) + '</span><h2>오늘도 해냈어요!</h2><p>조금씩 반복한 단어가 오래 남아요.<br>헷갈린 단어는 오답노트에서 다시 살펴봐요.</p><div class="result-metrics"><span><strong>' + study.correct + '/' + study.pool.length + '</strong>기억한 단어</span><span><strong>' + (study.pool.length - study.correct) + '</strong>틀린 문제</span></div><div class="study-result-actions"><button class="btn btn-dark" data-study-again data-date-key="' + escapeHtml(study.dateKey || "") + '">같은 범위 다시 학습 →</button><button class="btn btn-outline" data-study-all>다른 날짜 고르기</button><button class="btn btn-outline" data-nav="mistakes">오답노트 보기 →</button></div></div>';
       study = null;
       return;
     }
     var word = study.pool[study.index];
     var mode = currentQuestionMode(word);
     var answered = !!study.feedback;
-    var head = '<div class="study-card"><div class="study-head"><span>오늘의 학습</span><span>' + (study.index + 1) + ' / ' + study.pool.length + '</span></div><div class="study-progress"><span style="width:' + Math.round((study.index / study.pool.length) * 100) + '%"></span></div>';
+    var studyLabel = study.dateKey === null ? "전체 단어 학습" : (study.dateKey === "unknown" ? "날짜 정보 없음" : study.dateKey) + " 단어 학습";
+    var head = '<div class="study-card"><div class="study-head"><span>' + escapeHtml(studyLabel) + '</span><span>' + (study.index + 1) + ' / ' + study.pool.length + '</span></div><div class="study-progress"><span style="width:' + Math.round((study.index / study.pool.length) * 100) + '%"></span></div>';
     var body = "";
     if (mode === "choice") {
       if (!study.choiceOptions) {
-        var wrong = shuffle(state.words.filter(function (w) { return w.id !== word.id && w.meaning && w.meaning !== word.meaning; })).slice(0, 3).map(function (w) { return w.meaning; });
+        var optionsPool = study.dateKey === null ? state.words : study.pool;
+        var wrong = shuffle(Array.from(new Set(optionsPool.filter(function (w) { return w.id !== word.id && w.meaning && w.meaning !== word.meaning; }).map(function (w) { return w.meaning; })))).slice(0, 3);
         study.choiceOptions = shuffle(wrong.concat([word.meaning]));
       }
       body = '<span class="question-tag">뜻 고르기</span><p class="question-prompt">이 단어의 뜻은 무엇일까요?</p><h2 class="question-word">' + escapeHtml(word.term) + '</h2><div class="choice-grid">' + study.choiceOptions.map(function (option, index) {
@@ -735,6 +746,8 @@
       });
     });
     byId("wordList").addEventListener("click", function (e) {
+      var studyDate = e.target.closest("[data-study-date]");
+      if (studyDate) { startStudy(studyDate.getAttribute("data-study-date")); return; }
       var editDate = e.target.closest("[data-edit-group-date]");
       var saveDate = e.target.closest("[data-save-group-date]");
       var cancelDate = e.target.closest("[data-cancel-group-date]");
@@ -756,7 +769,12 @@
     });
     byId("exportButton").addEventListener("click", exportCsv);
     byId("studyShell").addEventListener("click", function (e) {
-      if (e.target.closest("[data-study-start]") || e.target.closest("[data-study-again]")) { startStudy(); return; }
+      var dateButton = e.target.closest("[data-study-date]");
+      if (dateButton) { startStudy(dateButton.getAttribute("data-study-date")); return; }
+      if (e.target.closest("[data-study-all]")) { study = null; renderStudy(); return; }
+      if (e.target.closest("[data-study-start]")) { startStudy(null); return; }
+      var again = e.target.closest("[data-study-again]");
+      if (again) { startStudy(again.getAttribute("data-date-key") || null); return; }
       if (e.target.closest("[data-memory-hide]")) { study.hidden = true; renderStudy(); return; }
       var choice = e.target.closest("[data-choice]");
       if (choice && study && !study.feedback) {
