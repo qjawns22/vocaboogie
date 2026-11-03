@@ -581,8 +581,18 @@
   }
   function renderWords() {
     var search = normalizeTerm(byId("wordSearch").value);
+    var dateSelect = byId("wordDateFilter");
+    var selectedDate = dateSelect.value;
+    var dateFormatter = new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
+    var dates = Array.from(new Set(state.words.map(wordDateKey))).sort().reverse();
+    dateSelect.innerHTML = '<option value="all">모든 날짜</option>' + dates.map(function (key) {
+      var label = key === "unknown" ? "날짜 정보 없음" : dateFormatter.format(new Date(key + "T12:00:00"));
+      return '<option value="' + key + '">' + escapeHtml(label) + ' (' + state.words.filter(function (w) { return wordDateKey(w) === key; }).length + '개)</option>';
+    }).join("");
+    dateSelect.value = dates.includes(selectedDate) ? selectedDate : "all";
     var now = Date.now();
     var list = state.words.slice().sort(function (a, b) { return (b.addedAt || 0) - (a.addedAt || 0); }).filter(function (w) {
+      if (dateSelect.value !== "all" && wordDateKey(w) !== dateSelect.value) return false;
       if (search && !(normalizeTerm(w.term + " " + w.meaning + " " + w.example).includes(search))) return false;
       if (currentFilter === "mastered" && Number(w.level || 0) < 3) return false;
       return true;
@@ -592,7 +602,6 @@
       holder.innerHTML = '<div class="empty-state"><div class="empty-illustration">✦</div><h3>' + (state.words.length ? "조건에 맞는 단어가 없어요" : "첫 단어장을 만들어 볼까요?") + '</h3><p>' + (state.words.length ? "검색어나 필터를 바꿔 보세요." : "사진이나 엑셀을 올려 나만의 단어를 모아 보세요.") + '</p>' + (state.words.length ? "" : '<button class="btn btn-dark" data-nav="import">단어 가져오기 →</button>') + '</div>';
       return;
     }
-    var dateFormatter = new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
     var groups = new Map();
     list.forEach(function (word) {
       var key = wordDateKey(word);
@@ -605,7 +614,7 @@
         var marker = level >= 3 ? "mastered" : w.dueAt && w.dueAt <= now ? "ready" : "";
         return '<article class="word-row" data-id="' + escapeHtml(w.id) + '"><div class="word-main"><strong>' + escapeHtml(w.term) + '</strong><small>' + (level >= 3 ? "익숙한 단어" : level ? "복습 중" : "새 단어") + '</small></div><div class="word-meaning">' + escapeHtml(w.meaning || "뜻을 추가해 주세요") + '</div><div class="word-example"><span>회화 예문</span>' + escapeHtml(w.example || "예문을 추가해 보세요") + '</div><div class="word-actions"><span class="mastery-dot ' + marker + '" aria-hidden="true"></span><button data-edit="' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.term) + ' 수정">✎</button><button data-delete="' + escapeHtml(w.id) + '" aria-label="' + escapeHtml(w.term) + ' 삭제">×</button></div></article>';
       }).join("");
-      return '<section class="word-date-group" data-date-key="' + group.key + '" aria-label="' + escapeHtml(group.label) + '"><div class="word-date-heading"><h2>' + escapeHtml(group.label) + '</h2><span>' + group.words.length + '개</span><button type="button" class="date-study-button" data-study-date="' + group.key + '" aria-label="' + escapeHtml(group.label) + ' 단어만 학습">이 날짜 학습 →</button><button type="button" data-edit-group-date="' + group.key + '" aria-label="' + escapeHtml(group.label) + ' 날짜 수정">날짜 수정</button></div><div class="word-date-items">' + rows + '</div></section>';
+      return '<section class="word-date-group" data-date-key="' + group.key + '" aria-label="' + escapeHtml(group.label) + '"><div class="word-date-heading"><h2>' + escapeHtml(group.label) + '</h2><span>' + group.words.length + '개</span><button type="button" class="date-study-button" data-study-date="' + group.key + '" aria-label="' + escapeHtml(group.label) + ' 단어만 학습">이 날짜 학습 →</button><button type="button" data-edit-group-date="' + group.key + '" aria-label="' + escapeHtml(group.label) + ' 날짜 수정">날짜 수정</button><button type="button" class="date-delete-button" data-delete-group-date="' + group.key + '" aria-label="' + escapeHtml(group.label) + ' 단어 전체 삭제">이 날짜 삭제</button></div><div class="word-date-items">' + rows + '</div></section>';
     }).join("");
   }
   function editWord(id) {
@@ -638,6 +647,24 @@
   }
   function dateGroup(key) {
     return Array.from(document.querySelectorAll(".word-date-group")).find(function (group) { return group.getAttribute("data-date-key") === key; });
+  }
+  function confirmGroupDelete(key) {
+    var group = dateGroup(key);
+    if (!group) return;
+    if (group.querySelector(".group-date-delete")) { group.querySelector(".group-date-delete").remove(); return; }
+    document.querySelectorAll(".group-date-delete, .group-date-edit").forEach(function (el) { el.remove(); });
+    var count = state.words.filter(function (word) { return wordDateKey(word) === key; }).length;
+    var label = group.querySelector("h2").textContent;
+    group.querySelector(".word-date-heading").insertAdjacentHTML("afterend", '<div class="group-date-delete"><p><strong>' + escapeHtml(label) + '</strong>에 저장된 단어 ' + count + '개를 삭제할까요? 이 날짜의 모든 단어와 관련 오답 기록이 삭제돼요.</p><button type="button" class="btn btn-dark" data-confirm-group-delete="' + key + '">' + count + '개 삭제</button><button type="button" class="btn btn-outline" data-cancel-group-delete>취소</button></div>');
+  }
+  function deleteGroupDate(key) {
+    var ids = new Set(state.words.filter(function (word) { return wordDateKey(word) === key; }).map(function (word) { return word.id; }));
+    if (!ids.size) return;
+    state.words = state.words.filter(function (word) { return !ids.has(word.id); });
+    state.wrongNotes = state.wrongNotes.filter(function (note) { return !ids.has(note.wordId); });
+    study = null; compose = null;
+    persist(); renderWords();
+    toast(ids.size + "개 단어를 삭제했어요.");
   }
   function editGroupDate(key) {
     var group = dateGroup(key);
@@ -872,6 +899,7 @@
       renderDraft();
     });
     byId("wordSearch").addEventListener("input", renderWords);
+    byId("wordDateFilter").addEventListener("change", renderWords);
     document.querySelectorAll("[data-filter]").forEach(function (button) {
       button.addEventListener("click", function () {
         currentFilter = button.getAttribute("data-filter");
@@ -880,6 +908,12 @@
       });
     });
     byId("wordList").addEventListener("click", function (e) {
+      var deleteDate = e.target.closest("[data-delete-group-date]");
+      var confirmDeleteDate = e.target.closest("[data-confirm-group-delete]");
+      var cancelDeleteDate = e.target.closest("[data-cancel-group-delete]");
+      if (deleteDate) { confirmGroupDelete(deleteDate.getAttribute("data-delete-group-date")); return; }
+      if (confirmDeleteDate) { deleteGroupDate(confirmDeleteDate.getAttribute("data-confirm-group-delete")); return; }
+      if (cancelDeleteDate) { cancelDeleteDate.closest(".group-date-delete").remove(); return; }
       var studyDate = e.target.closest("[data-study-date]");
       if (studyDate) { startStudy(studyDate.getAttribute("data-study-date")); return; }
       var editDate = e.target.closest("[data-edit-group-date]");

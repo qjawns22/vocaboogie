@@ -113,7 +113,7 @@
 
       <section class="page" id="page-words" aria-labelledby="wordsTitle">
         <div class="page-intro page-intro-row"><div><span class="kicker">MY WORD BANK</span><h1 id="wordsTitle">내 단어장<span class="accent-period">.</span></h1><p>단어를 추가한 날짜별로 살펴보고, 날짜가 다르면 수정할 수 있어요.</p></div><button class="btn btn-dark" data-nav="import">+ 단어 추가</button></div>
-        <div class="word-tools"><label class="search-box"><span aria-hidden="true">⌕</span><input id="wordSearch" type="search" placeholder="단어 또는 뜻 검색" aria-label="단어 또는 뜻 검색"></label><div class="filter-group" role="group" aria-label="단어 필터"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="mastered">익숙한 단어</button></div><button class="plain-link export-link" id="exportButton">CSV 내보내기 ↗</button></div>
+        <div class="word-tools"><label class="search-box"><span aria-hidden="true">⌕</span><input id="wordSearch" type="search" placeholder="단어 또는 뜻 검색" aria-label="단어 또는 뜻 검색"></label><label class="date-search-label">업로드 날짜 <select id="wordDateFilter" aria-label="업로드 날짜로 검색"><option value="all">모든 날짜</option></select></label><div class="filter-group" role="group" aria-label="단어 필터"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="mastered">익숙한 단어</button></div><button class="plain-link export-link" id="exportButton">CSV 내보내기 ↗</button></div>
         <div id="wordList" class="word-list"></div>
       </section>
 
