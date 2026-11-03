@@ -31,11 +31,12 @@
       <div class="side-bottom">
         <img class="side-turtle" src="./turtle.svg" alt="" aria-hidden="true">
         <p>작은 반복이<br><strong>큰 실력이 돼요.</strong></p>
-        <div class="privacy-note"><span aria-hidden="true">◉</span> 단어는 이 브라우저에 저장돼요</div>
+        <div class="privacy-note"><span aria-hidden="true">◉</span> <span id="syncStatus">계정 단어장 연결 중…</span></div>
       </div>
     </aside>
 
     <main class="main-content">
+      <div class="sync-bar" id="syncBar" role="status" aria-live="polite">계정 단어장 연결 중…</div>
       <header class="topbar">
         <div class="breadcrumb">보카북이 <span>/</span> <span id="pageLabel">홈</span></div>
         <div class="topbar-right">

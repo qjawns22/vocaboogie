@@ -158,3 +158,5 @@ img{max-width:100%}
 @media(max-width:840px){.mobile-nav{grid-template-columns:repeat(5,minmax(0,1fr))}}
 @media(max-width:600px){.mobile-nav button{font-size:8px}.mistake-card{padding:18px}.mistake-head h2{font-size:19px}.mistake-answers{grid-template-columns:1fr;gap:8px}.mistake-answer{min-height:unset}.mistake-meta{font-size:9px}.study-result-actions .btn{width:100%}}
 @media(max-width:600px){.word-date-heading{gap:7px}.word-date-heading h2{font-size:12px}.word-date-heading span{font-size:9px;padding:4px 7px}}
+
+.sync-bar { background:#edf5e8; color:#345d39; padding:8px 24px; font-size:12px; text-align:center; }

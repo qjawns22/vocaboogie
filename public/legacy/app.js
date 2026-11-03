@@ -94,10 +94,142 @@
       return { words: [], wrongNotes: [], day: "", dayAnswers: 0, curatedSeeded: false };
     }
   }
+  var syncReady = false, syncVersion = 0, syncUserId = "", syncBase = null, syncTimer = null, syncBusy = false, syncDirty = false;
+  function cloneState(value) { return JSON.parse(JSON.stringify(value)); }
+  function syncMessage(message) {
+    var bar = byId("syncBar"), side = byId("syncStatus");
+    if (bar) bar.textContent = message;
+    if (side) side.textContent = message;
+  }
+  function normalizeCloud(value) {
+    return {
+      words: Array.isArray(value && value.words) ? value.words : [],
+      wrongNotes: Array.isArray(value && value.wrongNotes) ? value.wrongNotes : [],
+      day: value && typeof value.day === "string" ? value.day : "",
+      dayAnswers: Number(value && value.dayAnswers) || 0,
+      curatedSeeded: Boolean(value && value.curatedSeeded)
+    };
+  }
+  function mergeRecords(remote, local, base, key) {
+    var baseMap = new Map((base || []).map(function (item) { return [String(item[key]), item]; }));
+    var localMap = new Map((local || []).map(function (item) { return [String(item[key]), item]; }));
+    var result = (remote || []).filter(function (item) {
+      var id = String(item[key]);
+      return !baseMap.has(id) || localMap.has(id);
+    }).map(function (item) {
+      var id = String(item[key]), original = baseMap.get(id), edited = localMap.get(id);
+      return edited && original && JSON.stringify(edited) !== JSON.stringify(original) ? edited : item;
+    });
+    var found = new Set(result.map(function (item) { return String(item[key]); }));
+    (local || []).forEach(function (item) {
+      var id = String(item[key]);
+      if (!found.has(id) && (!baseMap.has(id) || (remote || []).some(function (r) { return String(r[key]) === id; }))) {
+        result.push(item); found.add(id);
+      }
+    });
+    return result;
+  }
+  function mergeStates(remote, local, base) {
+    var combined = normalizeCloud(remote);
+    combined.words = mergeRecords(combined.words, local.words, base && base.words, "id");
+    combined.wrongNotes = mergeRecords(combined.wrongNotes, local.wrongNotes, base && base.wrongNotes, "wordId");
+    if (!base || local.day !== base.day || local.dayAnswers !== base.dayAnswers) {
+      if (combined.day === local.day) combined.dayAnswers = Math.max(combined.dayAnswers, local.dayAnswers);
+      else if (local.day > combined.day) { combined.day = local.day; combined.dayAnswers = local.dayAnswers; }
+    }
+    combined.curatedSeeded = combined.curatedSeeded || local.curatedSeeded;
+    return combined;
+  }
+  function adoptCloud(value) {
+    var currentWords = new Map(state.words.map(function (w) { return [String(w.id), w]; }));
+    var next = normalizeCloud(value);
+    state.words = next.words.map(function (w) {
+      var old = currentWords.get(String(w.id));
+      return old ? Object.assign(old, w) : w;
+    });
+    state.wrongNotes = next.wrongNotes;
+    state.day = next.day; state.dayAnswers = next.dayAnswers; state.curatedSeeded = next.curatedSeeded;
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* 서버에 저장됨 */ }
+    renderDashboard();
+    if (currentPage === "words") renderWords();
+    if (currentPage === "mistakes") renderWrongNotes();
+  }
+  async function cloudRequest(method, data) {
+    var response = await fetch("/api/sync", { method: method, credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json" }, body: data ? JSON.stringify(data) : undefined });
+    if (!response.ok) { var error = new Error("동기화 요청 실패"); error.status = response.status; throw error; }
+    return response.json();
+  }
+  async function pushCloud(local, base) {
+    for (var attempt = 0; attempt < 5; attempt++) {
+      var latest = await cloudRequest("GET");
+      var merged = mergeStates(latest.state, local, base);
+      try {
+        var saved = await cloudRequest("PUT", { state: merged, expectedVersion: latest.version });
+        syncVersion = saved.version;
+        syncBase = cloneState(merged);
+        adoptCloud(syncDirty ? mergeStates(merged, state, local) : merged);
+        return;
+      } catch (error) { if (error.status !== 409) throw error; }
+    }
+    throw new Error("동기화 충돌");
+  }
+  async function flushSync() {
+    if (!syncReady || syncBusy || !syncDirty) return;
+    syncBusy = true; syncDirty = false;
+    var snapshot = cloneState(state), base = cloneState(syncBase);
+    try {
+      syncMessage("단어장 저장 중…");
+      await pushCloud(snapshot, base);
+      syncMessage("계정 단어장에 저장됐어요");
+    } catch (error) {
+      syncDirty = true; syncMessage("연결이 끊겼어요 · 다시 저장 중");
+    } finally {
+      syncBusy = false;
+      if (syncDirty) scheduleSync(4000);
+    }
+  }
+  function scheduleSync(delay) { clearTimeout(syncTimer); syncTimer = setTimeout(flushSync, delay || 600); }
+  async function refreshSync() {
+    if (!syncReady || syncBusy || syncDirty) return;
+    try {
+      var latest = await cloudRequest("GET");
+      if (latest.version > syncVersion) {
+        syncVersion = latest.version;
+        syncBase = cloneState(latest.state);
+        adoptCloud(latest.state);
+        syncMessage("다른 기기의 단어장을 가져왔어요");
+      }
+    } catch (error) { syncMessage("연결 확인 중…"); }
+  }
+  async function initializeSync() {
+    syncMessage("계정 단어장 연결 중…");
+    try {
+      var latest = await cloudRequest("GET");
+      syncUserId = latest.userId;
+      var marker = "wordkit-cloud-imported-" + syncUserId;
+      if (!localStorage.getItem(marker)) {
+        try { localStorage.setItem("wordkit-before-cloud-v1", JSON.stringify(state)); } catch (e) { /* 백업 저장 공간 부족 */ }
+        await pushCloud(cloneState(state), null);
+        localStorage.setItem(marker, "1");
+      } else if (latest.state) {
+        syncVersion = latest.version; syncBase = cloneState(latest.state);
+        adoptCloud(latest.state);
+      } else {
+        await pushCloud(cloneState(state), null);
+      }
+      syncReady = true;
+      syncMessage("계정 단어장에 저장됐어요");
+      window.addEventListener("focus", refreshSync);
+      document.addEventListener("visibilitychange", function () { if (!document.hidden) refreshSync(); });
+      setInterval(refreshSync, 15000);
+    } catch (error) { syncMessage("계정 단어장에 연결할 수 없어요 · 다시 시도 중"); setTimeout(initializeSync, 5000); }
+  }
+
   function persist() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
     catch (e) { toast("이 브라우저에 저장할 수 없어요. 저장 공간을 확인해 주세요."); }
     renderDashboard();
+    if (syncReady) { syncDirty = true; scheduleSync(); }
   }
   function toast(message) {
     var el = byId("toast");
@@ -320,9 +452,9 @@
     try {
       var image = await makeOcrImage(file);
       worker = await Tesseract.createWorker("eng", 1, {
-        workerPath: new URL("./tesseract-worker.min.js", location.href).href,
-        corePath: new URL("./ocr/core", location.href).href,
-        langPath: new URL("./ocr/lang", location.href).href,
+        workerPath: new URL("/legacy/tesseract-worker.min.js", location.href).href,
+        corePath: new URL("/legacy/ocr/core", location.href).href,
+        langPath: new URL("/legacy/ocr/lang", location.href).href,
         logger: function (m) {
           var percent = Math.round((m.progress || 0) * 100);
           byId("ocrProgressText").textContent = (m.status === "recognizing text" ? "글씨를 읽는 중" : "인식 도구 준비 중") + "… " + percent + "%";
@@ -814,4 +946,5 @@
   if (curatedChanged) persist();
   else renderDashboard();
   go(["home", "import", "words", "study", "compose", "mistakes"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home");
+  initializeSync();
 })();
