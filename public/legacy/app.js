@@ -811,7 +811,7 @@
     var guided = shuffle(eligible.filter(function (word) { return COMPOSE_PROMPTS[normalizeTerm(word.term)]; }));
     var open = shuffle(eligible.filter(function (word) { return !COMPOSE_PROMPTS[normalizeTerm(word.term)]; }));
     var pool = shuffle(guided.slice(0, 5).concat(open).concat(guided.slice(5)).slice(0, 10));
-    compose = { pool: pool, index: 0, confident: 0, draft: null };
+    compose = { pool: pool, index: 0, confident: 0, draft: null, feedback: null, retryText: "" };
     renderCompose();
   }
   function renderCompose() {
@@ -822,7 +822,7 @@
       return;
     }
     if (!compose) {
-      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✎</div><span class="kicker">YOUR WORDS, YOUR SENTENCES</span><h2>한국어를 영어로 써 볼까요?</h2><p>내 단어장의 뜻을 단서로 영어 문장을 직접 써 보세요.<br>답을 쓴 다음 단어와 회화 예문을 보며 스스로 확인해요.</p><button class="btn btn-dark" data-compose-start>영작 시작하기 →</button><div class="study-small">한 번에 최대 10문제 · 예문은 가능한 답 중 하나예요</div></div>';
+      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✎</div><span class="kicker">YOUR WORDS, YOUR SENTENCES</span><h2>한국어를 영어로 써 볼까요?</h2><p>내 단어장의 뜻을 단서로 영어 문장을 직접 써 보세요.<br>답안을 내면 간단한 피드백과 문장 다듬기를 보여줘요.</p><button class="btn btn-dark" data-compose-start>영작 시작하기 →</button><div class="study-small">한 번에 최대 10문제 · 예문은 가능한 답 중 하나예요</div></div>';
       return;
     }
     if (compose.index >= compose.pool.length) {
@@ -835,7 +835,19 @@
     var prompt = COMPOSE_PROMPTS[normalizeTerm(word.term)] || '“' + word.meaning + '”의 의미를 담아 짧은 영어 문장을 써 보세요.';
     var answered = compose.draft !== null;
     var example = String(word.example || "").trim();
-    shell.innerHTML = '<div class="study-card compose-card"><div class="study-head"><span>영작 연습</span><span>' + (compose.index + 1) + ' / ' + compose.pool.length + '</span></div><div class="study-progress"><span style="width:' + Math.round((compose.index / compose.pool.length) * 100) + '%"></span></div><span class="question-tag">한국어 → 영어</span><p class="question-prompt">한국어를 읽고 영어로 답해 보세요.</p><h2 class="compose-prompt">' + escapeHtml(prompt) + '</h2>' + (answered ? '<div class="compose-comparison"><div><span>내 문장</span><p>' + escapeHtml(compose.draft) + '</p></div><div><span>이 단어로 쓴 예문</span><p>' + escapeHtml(example || "저장된 예문이 없어요. 아래 단어를 확인해 주세요.") + '</p><small>활용 단어: ' + escapeHtml(word.term) + '</small></div></div><p class="compose-guidance">예문과 똑같지 않아도 괜찮아요. 뜻이 통하고 문장이 자연스럽다면 잘 쓴 문장이에요.</p><div class="compose-actions"><button class="btn btn-dark" data-compose-confident>잘 썼어요 →</button><button class="btn btn-outline" data-compose-review>다시 연습할래요 →</button></div>' : '<form id="composeForm" class="compose-form"><label for="composeInput">내 영어 문장</label><textarea id="composeInput" rows="3" placeholder="영어로 자유롭게 써 보세요" aria-label="영어 문장" required></textarea><button class="btn btn-dark" type="submit">예문 확인하기 →</button></form>') + '</div>';
+    var answerPanel;
+    if (answered) {
+      var feedback = compose.feedback || window.WordkitComposeFeedback(compose.draft, word);
+      answerPanel = '<div class="compose-feedback compose-feedback-' + feedback.tone + '" role="status"><span class="compose-feedback-kicker">간단 평가</span><h3>' + escapeHtml(feedback.title) + '</h3>' +
+        (feedback.notes.length ? '<ul>' + feedback.notes.map(function (note) { return '<li>' + escapeHtml(note) + '</li>'; }).join("") + '</ul>' : '<p class="compose-feedback-note">기본 표기에서 고칠 부분은 찾지 못했어요.</p>') +
+        ((feedback.changed || !feedback.usedTerm) && feedback.suggestion ? '<div class="compose-suggestion"><span>' + escapeHtml(feedback.suggestionLabel) + '</span><p>' + escapeHtml(feedback.suggestion) + '</p></div>' : "") + '</div>' +
+        '<div class="compose-comparison"><div><span>내 답안</span><p>' + escapeHtml(compose.draft) + '</p></div><div><span>단어장 예문</span><p>' + escapeHtml(example || "저장된 예문이 없어요.") + '</p><small>활용 단어: ' + escapeHtml(word.term) + '</small></div></div>' +
+        '<p class="compose-guidance">단어 사용과 기본 표기를 점검했어요. 다른 자연스러운 문장도 정답일 수 있으니, 예문을 참고해 직접 판단해 주세요.</p>' +
+        '<div class="compose-actions"><button class="btn btn-outline" data-compose-retry>고쳐 다시 쓰기</button><button class="btn btn-dark" data-compose-confident>잘 썼어요 →</button><button class="btn btn-outline" data-compose-review>다시 연습할래요 →</button></div>';
+    } else {
+      answerPanel = '<form id="composeForm" class="compose-form"><label for="composeInput">내 영어 문장</label><textarea id="composeInput" rows="3" placeholder="영어로 자유롭게 써 보세요" aria-label="영어 문장" required>' + escapeHtml(compose.retryText || "") + '</textarea><button class="btn btn-dark" type="submit">답안 평가하기 →</button></form>';
+    }
+    shell.innerHTML = '<div class="study-card compose-card"><div class="study-head"><span>영작 연습</span><span>' + (compose.index + 1) + ' / ' + compose.pool.length + '</span></div><div class="study-progress"><span style="width:' + Math.round((compose.index / compose.pool.length) * 100) + '%"></span></div><span class="question-tag">한국어 → 영어</span><p class="question-prompt">한국어를 읽고 영어로 답해 보세요.</p><h2 class="compose-prompt">' + escapeHtml(prompt) + '</h2>' + answerPanel + '</div>';
   }
   function finishComposeQuestion(confident) {
     if (!compose || compose.draft === null) return;
@@ -853,6 +865,8 @@
     state.dayAnswers++;
     compose.index++;
     compose.draft = null;
+    compose.feedback = null;
+    compose.retryText = "";
     persist();
     renderCompose();
   }
@@ -962,6 +976,14 @@
     });
     byId("composeShell").addEventListener("click", function (e) {
       if (e.target.closest("[data-compose-start], [data-compose-again]")) { startCompose(); return; }
+      if (e.target.closest("[data-compose-retry]") && compose && compose.draft !== null) {
+        compose.retryText = compose.draft;
+        compose.draft = null;
+        compose.feedback = null;
+        renderCompose();
+        byId("composeInput").focus();
+        return;
+      }
       if (e.target.closest("[data-compose-confident]")) { finishComposeQuestion(true); return; }
       if (e.target.closest("[data-compose-review]")) { finishComposeQuestion(false); }
     });
@@ -971,6 +993,8 @@
       var answer = byId("composeInput").value.trim();
       if (!answer) { toast("영어 문장을 먼저 써 주세요."); return; }
       compose.draft = answer;
+      compose.feedback = window.WordkitComposeFeedback(answer, compose.pool[compose.index]);
+      compose.retryText = "";
       renderCompose();
     });
   }
