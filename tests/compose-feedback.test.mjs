@@ -32,3 +32,15 @@ test("does not treat a different valid sentence as an exact example match", () =
   assert.equal(result.usedTerm, true);
   assert.notEqual(result.title, "예문과 잘 맞아요!");
 });
+
+test("accepts a new example using an inflected separable phrase", () => {
+  const result = evaluate("Her speech blew me away.", { term: "blow away", example: "That concert blew me away." });
+  assert.equal(result.usedTerm, true);
+  assert.equal(result.tone, "good");
+});
+
+test("accepts the selected example for a fixed expression", () => {
+  const result = evaluate("Lunch is on me today.", { term: "It's on me", example: "Lunch is on me today." });
+  assert.equal(result.usedTerm, true);
+  assert.equal(result.title, "예문과 잘 맞아요!");
+});

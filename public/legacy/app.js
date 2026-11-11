@@ -53,6 +53,39 @@
     "recommend": "좋은 카페 하나 추천해 줄래?", "afford": "새 휴대폰을 살 여유가 없어."
   };
   var GENERATED_PROMPTS = window.WORDKIT_KOREAN_PROMPTS || {};
+  var GENERATED_EXAMPLES = window.WORDKIT_EXTRA_EXAMPLES || {};
+  function extraExamples(word) {
+    return (Array.isArray(word.extraExamples) ? word.extraExamples : []).slice(0, 4).map(function (entry) {
+      return typeof entry === "string" ? { english: entry.trim(), korean: "" } : {
+        english: String(entry && entry.english || "").trim(),
+        korean: String(entry && entry.korean || "").trim()
+      };
+    });
+  }
+  function enrichExtraExamples() {
+    var changed = false;
+    state.words.forEach(function (word) {
+      var saved = extraExamples(word);
+      var generated = GENERATED_EXAMPLES[normalizeTerm(word.term)];
+      if (!Array.isArray(generated) || !generated.length) return;
+      var wordChanged = false;
+      for (var i = 0; i < 4; i++) {
+        var pair = generated[i];
+        if (!Array.isArray(pair) || !pair[0]) continue;
+        if (saved[i] && saved[i].english) {
+          if (!saved[i].korean && saved[i].english === String(pair[0]) && pair[1]) {
+            saved[i].korean = String(pair[1]);
+            changed = true; wordChanged = true;
+          }
+          continue;
+        }
+        saved[i] = { english: String(pair[0]), korean: String(pair[1] || "") };
+        changed = true; wordChanged = true;
+      }
+      if (wordChanged) word.extraExamples = saved;
+    });
+    return changed;
+  }
   function composePrompt(word) {
     var saved = String(word.composePrompt || "").trim();
     if (saved) return saved;
@@ -111,7 +144,7 @@
       return { words: [], wrongNotes: [], day: "", dayAnswers: 0, curatedSeeded: false };
     }
   }
-  var syncReady = false, syncVersion = 0, syncUserId = "", syncBase = null, syncTimer = null, syncBusy = false, syncDirty = false;
+  var syncReady = false, syncVersion = 0, syncUserId = "", syncBase = null, syncTimer = null, syncBusy = false, syncDirty = false, pendingExampleSync = false;
   function cloneState(value) { return JSON.parse(JSON.stringify(value)); }
   function syncMessage(message) {
     var bar = byId("syncBar"), side = byId("syncStatus");
@@ -135,7 +168,13 @@
       return !baseMap.has(id) || localMap.has(id);
     }).map(function (item) {
       var id = String(item[key]), original = baseMap.get(id), edited = localMap.get(id);
-      return edited && original && JSON.stringify(edited) !== JSON.stringify(original) ? edited : item;
+      if (!edited || !original || JSON.stringify(edited) === JSON.stringify(original)) return item;
+      if (key !== "id") return edited;
+      var merged = Object.assign({}, item);
+      Object.keys(edited).forEach(function (field) {
+        if (JSON.stringify(edited[field]) !== JSON.stringify(original[field])) merged[field] = edited[field];
+      });
+      return merged;
     });
     var found = new Set(result.map(function (item) { return String(item[key]); }));
     (local || []).forEach(function (item) {
@@ -160,16 +199,21 @@
   function adoptCloud(value) {
     var currentWords = new Map(state.words.map(function (w) { return [String(w.id), w]; }));
     var next = normalizeCloud(value);
+    var inheritedExamples = false;
     state.words = next.words.map(function (w) {
       var old = currentWords.get(String(w.id));
+      if (old && !Array.isArray(w.extraExamples) && extraExamples(old).some(function (entry) { return entry.english; })) inheritedExamples = true;
       return old ? Object.assign(old, w) : w;
     });
     state.wrongNotes = next.wrongNotes;
     state.day = next.day; state.dayAnswers = next.dayAnswers; state.curatedSeeded = next.curatedSeeded;
+    var needsExampleSync = enrichExtraExamples() || inheritedExamples;
+    if (needsExampleSync) pendingExampleSync = true;
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* 서버에 저장됨 */ }
     renderDashboard();
     if (currentPage === "words") renderWords();
     if (currentPage === "mistakes") renderWrongNotes();
+    if (needsExampleSync && syncReady) { pendingExampleSync = false; persist(); }
   }
   async function cloudRequest(method, data) {
     var response = await fetch("/api/sync", { method: method, credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json" }, body: data ? JSON.stringify(data) : undefined });
@@ -235,6 +279,7 @@
         await pushCloud(cloneState(state), null);
       }
       syncReady = true;
+      if (pendingExampleSync) { pendingExampleSync = false; persist(); }
       syncMessage("계정 단어장에 저장됐어요");
       window.addEventListener("focus", refreshSync);
       document.addEventListener("visibilitychange", function () { if (!document.hidden) refreshSync(); });
@@ -264,7 +309,8 @@
     return {
       term: entry.term,
       meaning: !row.meaning || row.meaning === entry.sourceMeaning ? entry.meaning : row.meaning,
-      example: row.example || entry.example
+      example: row.example || entry.example,
+      extraExamples: row.extraExamples || []
     };
   }
   function enrichSavedWords() {
@@ -313,6 +359,7 @@
       if (!first) { uniqueWords.set(key, word); return true; }
       if (!first.meaning && word.meaning) first.meaning = word.meaning;
       if (!first.example && word.example) first.example = word.example;
+      if (!extraExamples(first).some(function (entry) { return entry.english; }) && extraExamples(word).some(function (entry) { return entry.english; })) first.extraExamples = word.extraExamples;
       first.level = Math.max(Number(first.level) || 0, Number(word.level) || 0);
       changed = true;
       return false;
@@ -501,7 +548,7 @@
       if (w !== -1) {
         headerAt = i; wordCol = w;
         meaningCol = row.findIndex(function (x) { return /^(뜻|의미|해석|한국어|korean|kor|meaning|definition|translation)$/.test(x); });
-        exampleCol = row.findIndex(function (x) { return /^(예문|문장|example|sentence)$/.test(x); });
+        exampleCol = row.findIndex(function (x) { return /^(예문|문장|example|sentence)(\s*1)?$/.test(x); });
         break;
       }
     }
@@ -514,7 +561,7 @@
       }
       wordCol = scores.indexOf(Math.max.apply(null, scores));
       meaningCol = wordCol + 1;
-      exampleCol = -1;
+      exampleCol = 2;
     }
     return { headerAt: headerAt, wordCol: wordCol, meaningCol: meaningCol, exampleCol: exampleCol };
   }
@@ -535,6 +582,12 @@
           var term = String(row[map.wordCol] || "").trim();
           var meaning = map.meaningCol >= 0 ? String(row[map.meaningCol] || "").trim() : "";
           var example = map.exampleCol >= 0 ? String(row[map.exampleCol] || "").trim() : "";
+          var additional = [3, 4, 5, 6].map(function (column) { return column === map.exampleCol ? "" : String(row[column] || "").trim(); });
+          if (!example && additional.some(Boolean)) {
+            var supplied = additional.filter(Boolean);
+            example = supplied.shift();
+            additional = supplied.concat(["", "", "", ""]).slice(0, 4);
+          }
           if (!/^[A-Za-z]/.test(term) || term.length > 100) return;
           if (/^(eng|english|word|vocabulary|term)$/i.test(term) && /^(kor|korean|meaning|definition|translation|뜻|의미|해석)$/i.test(meaning)) return;
           var key = normalizeTerm(term);
@@ -542,8 +595,15 @@
           if (existing) {
             if (meaning && !existing.meaning.split(" · ").includes(meaning)) existing.meaning += (existing.meaning ? " · " : "") + meaning;
             if (example && !existing.example) existing.example = example;
+            existing.extraExamples = existing.extraExamples || [];
+            [example].concat(additional).forEach(function (sentence) {
+              if (!sentence || sentence === existing.example || existing.extraExamples.includes(sentence)) return;
+              var empty = existing.extraExamples.findIndex(function (value) { return !value; });
+              if (empty >= 0) existing.extraExamples[empty] = sentence;
+              else if (existing.extraExamples.length < 4) existing.extraExamples.push(sentence);
+            });
           } else {
-          var entry = curateDraftRow({ term: term, meaning: meaning, example: example });
+          var entry = curateDraftRow({ term: term, meaning: meaning, example: example, extraExamples: additional });
             foundByTerm.set(key, entry);
             found.push(entry);
           }
@@ -561,7 +621,12 @@
   }
   function renderDraft() {
     byId("draftBody").innerHTML = draftRows.map(function (row, index) {
-      return '<tr data-index="' + index + '"><td><input data-field="term" aria-label="' + (index + 1) + '번째 영단어" value="' + escapeHtml(row.term) + '" placeholder="영단어"></td><td><input data-field="meaning" aria-label="' + (index + 1) + '번째 뜻" value="' + escapeHtml(row.meaning) + '" placeholder="뜻"></td><td><input data-field="example" aria-label="' + (index + 1) + '번째 예문" value="' + escapeHtml(row.example) + '" placeholder="예문"></td><td><button class="row-remove" data-remove="' + index + '" aria-label="' + (index + 1) + '번째 단어 삭제">×</button></td></tr>';
+      var additional = (row.extraExamples || []).slice(0, 4);
+      var count = additional.filter(Boolean).length;
+      var extraInputs = [0, 1, 2, 3].map(function (slot) {
+        return '<label>예문 ' + (slot + 2) + '<input data-extra-slot="' + slot + '" aria-label="' + (index + 1) + '번째 단어의 추가 예문 ' + (slot + 2) + '" value="' + escapeHtml(additional[slot] || "") + '" placeholder="추가 영어 예문"></label>';
+      }).join("");
+      return '<tr data-index="' + index + '"><td><input data-field="term" aria-label="' + (index + 1) + '번째 영단어" value="' + escapeHtml(row.term) + '" placeholder="영단어"></td><td><input data-field="meaning" aria-label="' + (index + 1) + '번째 뜻" value="' + escapeHtml(row.meaning) + '" placeholder="뜻"></td><td><input data-field="example" aria-label="' + (index + 1) + '번째 대표 예문" value="' + escapeHtml(row.example) + '" placeholder="대표 예문"><details class="draft-extra"><summary>추가 예문 ' + count + '개 확인·수정</summary><div>' + extraInputs + '</div></details></td><td><button class="row-remove" data-remove="' + index + '" aria-label="' + (index + 1) + '번째 단어 삭제">×</button></td></tr>';
     }).join("");
   }
   function collectDraftInputs() {
@@ -569,7 +634,8 @@
       return {
         term: tr.querySelector('[data-field="term"]').value.trim(),
         meaning: tr.querySelector('[data-field="meaning"]').value.trim(),
-        example: tr.querySelector('[data-field="example"]').value.trim()
+        example: tr.querySelector('[data-field="example"]').value.trim(),
+        extraExamples: Array.from(tr.querySelectorAll('[data-extra-slot]')).map(function (input) { return input.value.trim(); })
       };
     });
   }
@@ -584,12 +650,21 @@
       if (existing) {
         if (row.meaning && !existing.meaning) { existing.meaning = row.meaning; updated++; }
         if (row.example && !existing.example) { existing.example = row.example; updated++; }
+        var savedExtras = extraExamples(existing);
+        (row.extraExamples || []).forEach(function (sentence, index) {
+          if (!sentence) return;
+          if (!savedExtras[index] || savedExtras[index].english !== sentence) {
+            savedExtras[index] = { english: sentence, korean: "" }; updated++;
+          }
+        });
+        if (savedExtras.some(function (entry) { return entry && entry.english; })) existing.extraExamples = savedExtras;
       } else {
-        state.words.push({ id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(), term: row.term, meaning: row.meaning, example: row.example, level: 0, dueAt: 0, addedAt: Date.now() + added });
+        state.words.push({ id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(), term: row.term, meaning: row.meaning, example: row.example, extraExamples: (row.extraExamples || []).map(function (sentence) { return { english: sentence, korean: "" }; }), level: 0, dueAt: 0, addedAt: Date.now() + added });
         added++;
       }
     });
     if (!added && !updated) { toast("추가할 영단어가 없어요. 단어 칸을 확인해 주세요."); return; }
+    enrichExtraExamples();
     persist();
     clearDraft();
     renderWords();
@@ -679,7 +754,7 @@
     var ids = new Set(state.words.filter(function (word) { return wordDateKey(word) === key; }).map(function (word) { return word.id; }));
     if (!ids.size) return;
     state.words = state.words.filter(function (word) { return !ids.has(word.id); });
-    state.wrongNotes = state.wrongNotes.filter(function (note) { return !ids.has(note.wordId); });
+    state.wrongNotes = state.wrongNotes.filter(function (note) { return !ids.has(note.baseWordId || note.wordId); });
     study = null; compose = null;
     persist(); renderWords();
     toast(ids.size + "개 단어를 삭제했어요.");
@@ -707,7 +782,7 @@
   function exportCsv() {
     if (!state.words.length) { toast("내보낼 단어가 없어요."); return; }
     var quote = function (v) { return '"' + String(v || "").replace(/"/g, '""') + '"'; };
-    var content = "\uFEFF" + [["단어", "뜻", "예문"], ...state.words.map(function (w) { return [w.term, w.meaning, w.example]; })].map(function (r) { return r.map(quote).join(","); }).join("\r\n");
+    var content = "\uFEFF" + [["단어", "뜻", "예문", "예문2", "예문3", "예문4", "예문5"], ...state.words.map(function (w) { var extras = extraExamples(w); return [w.term, w.meaning, w.example].concat([0, 1, 2, 3].map(function (i) { return extras[i] ? extras[i].english : ""; })); })].map(function (r) { return r.map(quote).join(","); }).join("\r\n");
     var url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
     var link = document.createElement("a");
     link.href = url; link.download = "vocabooki-words-" + todayKey() + ".csv";
@@ -825,20 +900,29 @@
     renderStudy();
   }
   function startCompose() {
-    var eligible = state.words.filter(function (word) { return String(word.meaning || "").trim(); });
-    var pool = shuffle(eligible).slice(0, 10);
+    var eligible = state.words.filter(function (word) { return String(word.meaning || "").trim() && (String(word.example || "").trim() || extraExamples(word).some(function (entry) { return entry.english; })); });
+    var questions = [];
+    eligible.forEach(function (word) {
+      if (String(word.example || "").trim()) questions.push({ id: word.id, term: word.term, meaning: word.meaning, example: word.example, composePrompt: composePrompt(word) });
+      extraExamples(word).forEach(function (entry) {
+        if (!entry.english) return;
+        var prompt = entry.korean || "‘" + word.meaning + "’라는 뜻의 단어를 써서 영어 문장을 만들어 보세요.";
+        questions.push({ id: word.id, term: word.term, meaning: word.meaning, example: entry.english, composePrompt: prompt });
+      });
+    });
+    var pool = shuffle(questions).slice(0, 30);
     compose = { pool: pool, index: 0, confident: 0, draft: null, feedback: null, retryText: "" };
     renderCompose();
   }
   function renderCompose() {
     var shell = byId("composeShell");
-    var eligible = state.words.filter(function (word) { return String(word.meaning || "").trim(); });
+    var eligible = state.words.filter(function (word) { return String(word.meaning || "").trim() && (String(word.example || "").trim() || extraExamples(word).some(function (entry) { return entry.english; })); });
     if (!eligible.length) {
-      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✎</div><h2>뜻이 있는 단어를 추가해 주세요</h2><p>단어와 한국어 뜻을 저장하면 영작 연습을 시작할 수 있어요.</p><button class="btn btn-dark" data-nav="import">단어 가져오기 →</button></div>';
+      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✎</div><h2>뜻과 예문이 있는 단어를 추가해 주세요</h2><p>단어와 한국어 뜻, 영어 예문을 저장하면 영작 연습을 시작할 수 있어요.</p><button class="btn btn-dark" data-nav="import">단어 가져오기 →</button></div>';
       return;
     }
     if (!compose) {
-      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✎</div><span class="kicker">YOUR WORDS, YOUR SENTENCES</span><h2>한국어를 영어로 써 볼까요?</h2><p>한국어 문장을 읽고 영어로 옮겨 보세요.<br>답안을 내면 단어 사용과 기본 표기를 점검하고 예문을 보여줘요.</p><button class="btn btn-dark" data-compose-start>영작 시작하기 →</button><div class="study-small">한 번에 최대 10문제 · 자연스러운 답은 여러 가지예요</div></div>';
+      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✎</div><span class="kicker">YOUR WORDS, YOUR SENTENCES</span><h2>한국어를 영어로 써 볼까요?</h2><p>한국어 문장을 읽고 영어로 옮겨 보세요.<br>답안을 내면 단어 사용과 기본 표기를 점검하고 예문을 보여줘요.</p><button class="btn btn-dark" data-compose-start>영작 시작하기 →</button><div class="study-small">한 번에 최대 30문제 · 단어마다 예문 5개를 번갈아 연습해요</div></div>';
       return;
     }
     if (compose.index >= compose.pool.length) {
@@ -857,7 +941,7 @@
       answerPanel = '<div class="compose-feedback compose-feedback-' + feedback.tone + '" role="status"><span class="compose-feedback-kicker">답안 점검</span><h3>' + escapeHtml(feedback.title) + '</h3>' +
         (feedback.notes.length ? '<ul>' + feedback.notes.map(function (note) { return '<li>' + escapeHtml(note) + '</li>'; }).join("") + '</ul>' : '<p class="compose-feedback-note">기본 표기에서 고칠 부분은 찾지 못했어요.</p>') +
         ((feedback.changed || !feedback.usedTerm) && feedback.suggestion ? '<div class="compose-suggestion"><span>' + escapeHtml(feedback.suggestionLabel) + '</span><p>' + escapeHtml(feedback.suggestion) + '</p></div>' : "") + '</div>' +
-        '<div class="compose-comparison"><div><span>내 답안</span><p>' + escapeHtml(compose.draft) + '</p></div><div><span>단어장 예문</span><p>' + escapeHtml(example || "저장된 예문이 없어요.") + '</p><small>활용 단어: ' + escapeHtml(word.term) + '</small></div></div>' +
+        '<div class="compose-comparison"><div><span>내 답안</span><p>' + escapeHtml(compose.draft) + '</p></div><div><span>연습 예문</span><p>' + escapeHtml(example || "저장된 예문이 없어요.") + '</p><small>활용 단어: ' + escapeHtml(word.term) + '</small></div></div>' +
         '<p class="compose-guidance">단어 사용과 기본 표기를 점검했어요. 뜻이 같은 다른 자연스러운 문장도 정답일 수 있어요.</p>' +
         '<div class="compose-actions"><button class="btn btn-outline" data-compose-retry>고쳐 다시 쓰기</button><button class="btn btn-dark" data-compose-confident>잘 썼어요 →</button><button class="btn btn-outline" data-compose-review>다시 연습할래요 →</button></div>';
     } else {
@@ -870,9 +954,10 @@
     var word = compose.pool[compose.index];
     if (confident) compose.confident++;
     else {
-      var wordId = String(word.id || normalizeTerm(word.term));
-      var note = state.wrongNotes.find(function (item) { return item.wordId === wordId; });
-      var details = { wordId: wordId, term: word.term, meaning: word.meaning || "", example: word.example || "", mode: "compose", submittedAnswer: compose.draft, correctAnswer: word.example || word.term, wrongAt: Date.now() };
+      var baseWordId = String(word.id || normalizeTerm(word.term));
+      var wordId = baseWordId + "::compose::" + normalizeTerm(word.example || word.term);
+      var note = state.wrongNotes.find(function (item) { return item.wordId === wordId || (item.wordId === baseWordId && item.mode === "compose" && normalizeTerm(item.example) === normalizeTerm(word.example)); });
+      var details = { wordId: wordId, baseWordId: baseWordId, term: word.term, meaning: word.meaning || "", example: word.example || "", mode: "compose", submittedAnswer: compose.draft, correctAnswer: word.example || word.term, wrongAt: Date.now() };
       if (note) Object.assign(note, details, { misses: (Number(note.misses) || 1) + 1 });
       else state.wrongNotes.push(Object.assign({ misses: 1 }, details));
     }
@@ -961,6 +1046,7 @@
         var id = del.getAttribute("data-delete");
         if (confirm("이 단어를 삭제할까요?")) {
           state.words = state.words.filter(function (w) { return w.id !== id; });
+          state.wrongNotes = state.wrongNotes.filter(function (note) { return (note.baseWordId || note.wordId) !== id; });
           persist(); renderWords(); toast("단어를 삭제했어요.");
         }
       }
@@ -1016,9 +1102,10 @@
     });
   }
   var curatedChanged = enrichSavedWords();
+  var examplesChanged = enrichExtraExamples();
   formatDate();
   initEvents();
-  if (curatedChanged) persist();
+  if (curatedChanged || examplesChanged) persist();
   else renderDashboard();
   go(["home", "import", "words", "study", "compose", "mistakes"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "home");
   initializeSync();

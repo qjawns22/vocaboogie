@@ -7,13 +7,14 @@
   <meta name="description" content="손글씨 사진과 엑셀 파일에서 영어 단어를 가져와 정리하고, 짧은 퀴즈로 복습하는 나만의 단어장">
   <title>보카북이 — 사진에서 단어장까지</title>
   <link rel="icon" href="./favicon.svg?v=4" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=11">
+  <link rel="stylesheet" href="./styles.css?v=12">
   <script src="./xlsx.full.min.js" defer></script>
   <script src="./tesseract.min.js" defer></script>
   <script src="./curated-vocab.js" defer></script>
-  <script src="./compose-feedback.js?v=1" defer></script>
+  <script src="./compose-feedback.js?v=2" defer></script>
   <script src="./compose-prompts.js?v=2" defer></script>
-  <script src="./app.js?v=17" defer></script>
+  <script src="./extra-examples.js?v=1" defer></script>
+  <script src="./app.js?v=18" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -101,14 +102,14 @@
         <input type="file" id="photoInput" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" hidden>
         <input type="file" id="excelInput" accept=".xlsx,.xls,.csv,.tsv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/tab-separated-values" hidden>
         <input type="file" id="anyInput" accept="image/*,.xlsx,.xls,.csv,.tsv" hidden>
-        <div class="import-info"><div><span aria-hidden="true">✳</span><strong>손글씨 인식 팁</strong><p>밝은 곳에서 글씨가 크게 보이게 촬영하면 더 잘 읽어요. 인식 결과는 아래에서 직접 고칠 수 있습니다.</p></div><div><span aria-hidden="true">◫</span><strong>엑셀 형식</strong><p>첫 행에 ‘단어, 뜻, 예문’이 있으면 자동으로 맞춰요. 제목이 없어도 앞쪽 열을 읽습니다.</p></div></div>
+        <div class="import-info"><div><span aria-hidden="true">✳</span><strong>손글씨 인식 팁</strong><p>밝은 곳에서 글씨가 크게 보이게 촬영하면 더 잘 읽어요. 인식 결과는 아래에서 직접 고칠 수 있습니다.</p></div><div><span aria-hidden="true">◫</span><strong>엑셀 형식</strong><p>1열 단어, 2열 뜻, 3열 대표 예문, 4~7열 추가 예문을 읽어요. 추가 예문은 영작 연습에 사용합니다.</p></div></div>
         <p class="import-example-note">기존 단어 목록과 일치하는 표현에는 쉬운 영어 회화 예문이 자동으로 채워집니다.</p>
         <div class="sample-row"><span>먼저 사용해 보고 싶다면</span><button class="plain-link" id="sampleButton">연습 단어 6개 추가하기 ↗</button></div>
         <div class="review-panel" id="reviewPanel" hidden>
           <div class="review-header"><div><span class="kicker">REVIEW BEFORE SAVING</span><h2>단어를 확인해 주세요</h2><p id="reviewSummary"></p></div><button class="icon-button" id="clearDraft" aria-label="가져오기 닫기">×</button></div>
           <div class="ocr-layout" id="ocrLayout" hidden><div class="ocr-image-wrap"><img id="ocrImage" alt="올린 단어 사진 미리보기"></div><div class="ocr-text-wrap"><label for="ocrText">읽어낸 글씨 <span>틀린 부분을 고친 뒤 다시 추출하세요.</span></label><textarea id="ocrText" rows="8" spellcheck="false"></textarea><button class="btn btn-outline" id="parseOcrButton">수정한 글씨로 다시 추출</button></div></div>
           <div class="ocr-progress" id="ocrProgress" hidden><span class="spinner"></span><span id="ocrProgressText">사진 속 글씨를 읽는 중…</span></div>
-          <div class="draft-table-wrap"><table class="draft-table"><thead><tr><th>영단어 / 표현</th><th>뜻 <span>(선택)</span></th><th>예문 <span>(선택)</span></th><th><span class="sr-only">삭제</span></th></tr></thead><tbody id="draftBody"></tbody></table></div>
+          <div class="draft-table-wrap"><table class="draft-table"><thead><tr><th>영단어 / 표현</th><th>뜻 <span>(선택)</span></th><th>대표 예문 <span>(선택)</span></th><th><span class="sr-only">삭제</span></th></tr></thead><tbody id="draftBody"></tbody></table></div>
           <div class="review-actions"><button class="btn btn-outline" id="addDraftRow">+ 빈 줄 추가</button><button class="btn btn-dark" id="saveDraft">단어장에 추가 <span aria-hidden="true">→</span></button></div>
         </div>
       </section>
@@ -130,7 +131,7 @@
       </section>
 
       <section class="page" id="page-mistakes" aria-labelledby="mistakesTitle">
-        <div class="page-intro"><span class="kicker">LEARN FROM MISSTEPS</span><h1 id="mistakesTitle">오답노트<span class="accent-period">.</span></h1><p>틀린 문제를 모아 내가 쓴 답과 정답을 나란히 살펴봐요. 같은 단어는 최근 오답으로 갱신돼요.</p></div>
+        <div class="page-intro"><span class="kicker">LEARN FROM MISSTEPS</span><h1 id="mistakesTitle">오답노트<span class="accent-period">.</span></h1><p>틀린 문제를 모아 내가 쓴 답과 정답을 나란히 살펴봐요. 같은 문제를 다시 틀리면 최근 답안으로 갱신돼요.</p></div>
         <div id="mistakeList" class="mistake-list"></div>
       </section>
     </main>

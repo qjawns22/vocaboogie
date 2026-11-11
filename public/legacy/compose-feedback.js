@@ -20,6 +20,12 @@
       tell: ["tells", "told", "telling"],
       feel: ["feels", "felt", "feeling"],
       say: ["says", "said", "saying"],
+      blow: ["blows", "blew", "blown", "blowing"],
+      fight: ["fights", "fought", "fighting"],
+      pay: ["pays", "paid", "paying"],
+      stick: ["sticks", "stuck", "sticking"],
+      leave: ["leaves", "left", "leaving"],
+      lose: ["loses", "lost", "losing"],
       come: ["comes", "came", "coming"],
       grow: ["grows", "grew", "grown", "growing"]
     };
@@ -45,7 +51,18 @@
         if (forms(target[0]).includes(words[index]) && ["me", "you", "him", "her", "it", "us", "them"].includes(words[index + 1]) && words[index + 2] === target[1]) return true;
       }
     }
-    return false;
+    if (plain(term) === "it's on me") return /\bon me\b/.test(plain(answer));
+    var ignored = new Set(["i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them", "my", "your", "our", "its", "it's", "someone", "something", "one", "ones", "a", "an", "the", "to", "be", "am", "is", "are", "was", "were", "have", "has", "had", "can", "could", "will", "would", "do", "did"]);
+    var salient = target.filter(function (word) { return !ignored.has(word); });
+    if (salient.length < 2) return false;
+    var cursor = -1;
+    return salient.every(function (word) {
+      var limit = cursor < 0 ? words.length : Math.min(words.length, cursor + 6);
+      for (var position = cursor + 1; position < limit; position++) {
+        if (forms(word).includes(words[position])) { cursor = position; return true; }
+      }
+      return false;
+    });
   }
 
   function basicCorrections(answer) {
@@ -74,7 +91,7 @@
     var term = String(word && word.term || "").trim();
     var example = String(word && word.example || "").trim();
     var correction = basicCorrections(original);
-    var used = usesTerm(original, term);
+    var used = usesTerm(original, term) || Boolean(example && plain(original) === plain(example));
     var notes = [];
     if (!used) notes.push("이번 단어 ‘" + term + "’를 활용했는지 확인해 보세요.");
     if (plain(original).split(" ").filter(Boolean).length < 2) notes.push("한 단어에서 멈추지 말고 짧은 문장으로 써 보세요.");
