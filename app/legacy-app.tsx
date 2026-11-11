@@ -7,7 +7,7 @@ export default function LegacyApp() {
     if (window.__vocabookiStarted) return;
     window.__vocabookiStarted = true;
     (async () => {
-      for (const src of ["/legacy/xlsx.full.min.js", "/legacy/tesseract.min.js", "/legacy/curated-vocab.js", "/legacy/compose-feedback.js?v=1", "/legacy/app.js?v=16"]) {
+      for (const src of ["/legacy/xlsx.full.min.js", "/legacy/tesseract.min.js", "/legacy/curated-vocab.js", "/legacy/compose-feedback.js?v=1", "/legacy/compose-prompts.js?v=1", "/legacy/app.js?v=17"]) {
         await new Promise<void>((resolve, reject) => { const script = document.createElement("script"); script.src = src; script.onload = () => resolve(); script.onerror = () => reject(new Error(`스크립트를 불러올 수 없습니다: ${src}`)); document.body.appendChild(script); });
       }
     })().catch(console.error);

@@ -52,6 +52,23 @@
     "what's wrong?": "무슨 일이야? 내가 도와줄까?", "is everything okay?": "괜찮아? 걱정돼 보여.",
     "recommend": "좋은 카페 하나 추천해 줄래?", "afford": "새 휴대폰을 살 여유가 없어."
   };
+  var GENERATED_PROMPTS = window.WORDKIT_KOREAN_PROMPTS || {};
+  function composePrompt(word) {
+    var saved = String(word.composePrompt || "").trim();
+    if (saved) return saved;
+    var known = COMPOSE_PROMPTS[normalizeTerm(word.term)] || GENERATED_PROMPTS[normalizeTerm(word.term)];
+    if (known) return known;
+    var meaning = String(word.meaning || "").trim().split(/[,，;；]/)[0]
+      .replace(/\([^)]*\)/g, "").replace(/[~…]/g, "").trim();
+    if (!meaning) return "오늘 있었던 일을 영어로 이야기해 줘.";
+    if (/[.!?。！？]$/.test(meaning)) return meaning;
+    if (/^(나|내가|너|네가|우리|그|그녀|저|저는|저희)/.test(meaning) && /[가-힣]$/.test(meaning)) return meaning + ".";
+    if (meaning.endsWith("하다")) return "나는 " + meaning.slice(0, -2) + "하고 싶어.";
+    if (meaning.endsWith("되다")) return "그렇게 " + meaning.slice(0, -2) + "되고 싶어.";
+    if (meaning.endsWith("다")) return "나는 " + meaning.slice(0, -1) + "고 싶어.";
+    if (/[은는한]$/.test(meaning)) return "그건 정말 " + meaning + " 것 같아.";
+    return "그 " + meaning + "에 대해 더 알고 싶어.";
+  }
   var toastTimer = null;
   var photoUrl = null;
 
@@ -623,7 +640,7 @@
     if (!word || !row) return;
     if (row.querySelector(".word-edit")) { row.querySelector(".word-edit").remove(); return; }
     var savedDate = wordDateKey(word);
-    row.insertAdjacentHTML("beforeend", '<div class="word-edit"><label>영단어<input data-edit-field="term" value="' + escapeHtml(word.term) + '"></label><label>뜻<input data-edit-field="meaning" value="' + escapeHtml(word.meaning) + '"></label><label>예문<input data-edit-field="example" value="' + escapeHtml(word.example) + '"></label><label>추가 날짜<input type="date" data-edit-field="date" value="' + (savedDate === "unknown" ? "" : savedDate) + '"></label><button class="btn btn-dark" data-save-word="' + escapeHtml(id) + '">저장</button></div>');
+    row.insertAdjacentHTML("beforeend", '<div class="word-edit"><label>영단어<input data-edit-field="term" value="' + escapeHtml(word.term) + '"></label><label>뜻<input data-edit-field="meaning" value="' + escapeHtml(word.meaning) + '"></label><label>예문<input data-edit-field="example" value="' + escapeHtml(word.example) + '"></label><label>영작 문제 문장<input data-edit-field="composePrompt" value="' + escapeHtml(word.composePrompt || composePrompt(word)) + '" placeholder="예: 내 말을 끝까지 들어줘."></label><label>추가 날짜<input type="date" data-edit-field="date" value="' + (savedDate === "unknown" ? "" : savedDate) + '"></label><button class="btn btn-dark" data-save-word="' + escapeHtml(id) + '">저장</button></div>');
   }
   function saveWord(id) {
     var word = state.words.find(function (w) { return w.id === id; });
@@ -642,6 +659,7 @@
     word.term = term;
     word.meaning = edit.querySelector('[data-edit-field="meaning"]').value.trim();
     word.example = edit.querySelector('[data-edit-field="example"]').value.trim();
+    word.composePrompt = edit.querySelector('[data-edit-field="composePrompt"]').value.trim();
     if (changedDate !== null) word.addedAt = changedDate;
     persist(); renderWords(); toast("단어를 수정했어요.");
   }
@@ -808,10 +826,8 @@
   }
   function startCompose() {
     var eligible = state.words.filter(function (word) { return String(word.meaning || "").trim(); });
-    var guided = shuffle(eligible.filter(function (word) { return COMPOSE_PROMPTS[normalizeTerm(word.term)]; }));
-    var open = shuffle(eligible.filter(function (word) { return !COMPOSE_PROMPTS[normalizeTerm(word.term)]; }));
-    var pool = shuffle(guided.slice(0, 5).concat(open).concat(guided.slice(5)).slice(0, 10));
-    compose = { pool: pool, index: 0, confident: 0, draft: null, feedback: null, retryText: "", pending: false };
+    var pool = shuffle(eligible).slice(0, 10);
+    compose = { pool: pool, index: 0, confident: 0, draft: null, feedback: null, retryText: "" };
     renderCompose();
   }
   function renderCompose() {
@@ -822,7 +838,7 @@
       return;
     }
     if (!compose) {
-      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✎</div><span class="kicker">YOUR WORDS, YOUR SENTENCES</span><h2>한국어를 영어로 써 볼까요?</h2><p>내 단어장의 뜻을 단서로 영어 문장을 직접 써 보세요.<br>답안을 내면 AI가 짧게 평가하고 자연스러운 문장을 제안해요.</p><button class="btn btn-dark" data-compose-start>영작 시작하기 →</button><div class="study-small">한 번에 최대 10문제 · 예문은 가능한 답 중 하나예요</div></div>';
+      shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✎</div><span class="kicker">YOUR WORDS, YOUR SENTENCES</span><h2>한국어를 영어로 써 볼까요?</h2><p>한국어 문장을 읽고 영어로 옮겨 보세요.<br>답안을 내면 단어 사용과 기본 표기를 점검하고 예문을 보여줘요.</p><button class="btn btn-dark" data-compose-start>영작 시작하기 →</button><div class="study-small">한 번에 최대 10문제 · 자연스러운 답은 여러 가지예요</div></div>';
       return;
     }
     if (compose.index >= compose.pool.length) {
@@ -832,21 +848,20 @@
       return;
     }
     var word = compose.pool[compose.index];
-    var prompt = COMPOSE_PROMPTS[normalizeTerm(word.term)] || '“' + word.meaning + '”의 의미를 담아 짧은 영어 문장을 써 보세요.';
+    var prompt = composePrompt(word);
     var answered = compose.draft !== null;
     var example = String(word.example || "").trim();
     var answerPanel;
     if (answered) {
       var feedback = compose.feedback || window.WordkitComposeFeedback(compose.draft, word);
-      answerPanel = '<div class="compose-feedback compose-feedback-' + feedback.tone + '" role="status"><span class="compose-feedback-kicker">' + (feedback.source === "ai" ? "AI 평가" : "기본 점검") + '</span><h3>' + escapeHtml(feedback.title) + '</h3>' +
-        (feedback.fallback ? '<p class="compose-feedback-note">' + escapeHtml(feedback.fallbackMessage || "AI 평가를 불러오지 못해 기본 점검을 보여드려요.") + '</p>' : "") +
-        (feedback.notes.length ? '<ul>' + feedback.notes.map(function (note) { return '<li>' + escapeHtml(note) + '</li>'; }).join("") + '</ul>' : feedback.source === "ai" ? "" : '<p class="compose-feedback-note">기본 표기에서 고칠 부분은 찾지 못했어요.</p>') +
+      answerPanel = '<div class="compose-feedback compose-feedback-' + feedback.tone + '" role="status"><span class="compose-feedback-kicker">답안 점검</span><h3>' + escapeHtml(feedback.title) + '</h3>' +
+        (feedback.notes.length ? '<ul>' + feedback.notes.map(function (note) { return '<li>' + escapeHtml(note) + '</li>'; }).join("") + '</ul>' : '<p class="compose-feedback-note">기본 표기에서 고칠 부분은 찾지 못했어요.</p>') +
         ((feedback.changed || !feedback.usedTerm) && feedback.suggestion ? '<div class="compose-suggestion"><span>' + escapeHtml(feedback.suggestionLabel) + '</span><p>' + escapeHtml(feedback.suggestion) + '</p></div>' : "") + '</div>' +
         '<div class="compose-comparison"><div><span>내 답안</span><p>' + escapeHtml(compose.draft) + '</p></div><div><span>단어장 예문</span><p>' + escapeHtml(example || "저장된 예문이 없어요.") + '</p><small>활용 단어: ' + escapeHtml(word.term) + '</small></div></div>' +
-        '<p class="compose-guidance">' + (feedback.source === "ai" ? "AI 제안을 참고해 내 문장을 다시 살펴보세요. 다른 자연스러운 답도 가능해요." : "단어 사용과 기본 표기를 점검했어요. 다른 자연스러운 문장도 정답일 수 있으니, 예문을 참고해 직접 판단해 주세요.") + '</p>' +
+        '<p class="compose-guidance">단어 사용과 기본 표기를 점검했어요. 뜻이 같은 다른 자연스러운 문장도 정답일 수 있어요.</p>' +
         '<div class="compose-actions"><button class="btn btn-outline" data-compose-retry>고쳐 다시 쓰기</button><button class="btn btn-dark" data-compose-confident>잘 썼어요 →</button><button class="btn btn-outline" data-compose-review>다시 연습할래요 →</button></div>';
     } else {
-      answerPanel = '<form id="composeForm" class="compose-form"><label for="composeInput">내 영어 문장</label><textarea id="composeInput" rows="3" maxlength="600" placeholder="영어로 자유롭게 써 보세요" aria-label="영어 문장" required>' + escapeHtml(compose.retryText || "") + '</textarea><button class="btn btn-dark" type="submit">AI로 답안 평가하기 →</button></form>';
+      answerPanel = '<form id="composeForm" class="compose-form"><label for="composeInput">내 영어 문장</label><textarea id="composeInput" rows="3" maxlength="600" placeholder="영어로 자유롭게 써 보세요" aria-label="영어 문장" required>' + escapeHtml(compose.retryText || "") + '</textarea><button class="btn btn-dark" type="submit">답안 확인하기 →</button></form>';
     }
     shell.innerHTML = '<div class="study-card compose-card"><div class="study-head"><span>영작 연습</span><span>' + (compose.index + 1) + ' / ' + compose.pool.length + '</span></div><div class="study-progress"><span style="width:' + Math.round((compose.index / compose.pool.length) * 100) + '%"></span></div><span class="question-tag">한국어 → 영어</span><p class="question-prompt">한국어를 읽고 영어로 답해 보세요.</p><h2 class="compose-prompt">' + escapeHtml(prompt) + '</h2>' + answerPanel + '</div>';
   }
@@ -988,50 +1003,16 @@
       if (e.target.closest("[data-compose-confident]")) { finishComposeQuestion(true); return; }
       if (e.target.closest("[data-compose-review]")) { finishComposeQuestion(false); }
     });
-    byId("composeShell").addEventListener("submit", async function (e) {
+    byId("composeShell").addEventListener("submit", function (e) {
       if (e.target.id !== "composeForm" || !compose || compose.draft !== null) return;
       e.preventDefault();
-      if (compose.pending) return;
       var answer = byId("composeInput").value.trim();
       if (!answer) { toast("영어 문장을 먼저 써 주세요."); return; }
-      var session = compose;
-      var word = session.pool[session.index];
-      var prompt = COMPOSE_PROMPTS[normalizeTerm(word.term)] || '“' + word.meaning + '”의 의미를 담아 짧은 영어 문장을 써 보세요.';
-      var button = e.target.querySelector('button[type="submit"]');
-      session.pending = true;
-      button.disabled = true;
-      button.textContent = "AI가 평가 중…";
-      try {
-        var response = await fetch("/api/compose-feedback", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ answer: answer, prompt: prompt, term: word.term, meaning: word.meaning || "", example: word.example || "" })
-        });
-        if (!response.ok) {
-          var failure = await response.json().catch(function () { return null; });
-          var requestError = new Error("AI 평가 실패");
-          requestError.code = failure && failure.code;
-          throw requestError;
-        }
-        var result = await response.json();
-        if (!result.feedback || !["good", "polish", "review"].includes(result.feedback.tone) || !Array.isArray(result.feedback.notes)) throw new Error("평가 형식 오류");
-        if (compose !== session) return;
-        session.feedback = result.feedback;
-      } catch (error) {
-        if (compose !== session) return;
-        session.feedback = Object.assign(window.WordkitComposeFeedback(answer, word), {
-          source: "basic",
-          fallback: true,
-          fallbackMessage: error && error.code === "no_credits" ? "OpenAI API 크레딧이 없어 기본 점검을 보여드려요." : "AI 평가를 불러오지 못해 기본 점검을 보여드려요."
-        });
-      } finally {
-        if (compose === session) {
-          session.pending = false;
-          session.draft = answer;
-          session.retryText = "";
-          renderCompose();
-        }
-      }
+      var word = compose.pool[compose.index];
+      compose.feedback = window.WordkitComposeFeedback(answer, word);
+      compose.draft = answer;
+      compose.retryText = "";
+      renderCompose();
     });
   }
   var curatedChanged = enrichSavedWords();
