@@ -649,7 +649,7 @@
       var existing = state.words.find(function (w) { return normalizeTerm(w.term) === key; });
       if (existing) {
         if (row.meaning && !existing.meaning) { existing.meaning = row.meaning; updated++; }
-        if (row.example && !existing.example) { existing.example = row.example; updated++; }
+        if (row.example && row.example !== existing.example) { existing.example = row.example; updated++; }
         var savedExtras = extraExamples(existing);
         (row.extraExamples || []).forEach(function (sentence, index) {
           if (!sentence) return;
@@ -668,7 +668,7 @@
     persist();
     clearDraft();
     renderWords();
-    toast(added + "개 단어를 추가했어요" + (updated ? " · " + updated + "개 항목을 보완했어요" : "") + "!");
+    toast(added + "개 단어를 추가했어요" + (updated ? " · " + updated + "개 항목을 업데이트했어요" : "") + "!");
     go("words");
   }
   function renderWords() {
