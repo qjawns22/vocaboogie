@@ -194,8 +194,9 @@ async function requestGemini(
     },
     generationConfig: {
       temperature: 0.2,
-      maxOutputTokens: 800,
+      maxOutputTokens: 2500,
       responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 0 },
       responseSchema: {
         type: "OBJECT",
         properties: {
@@ -365,7 +366,13 @@ export async function POST(request: Request) {
     }
 
     const cleanedText = cleanJsonString(textPart);
-    const assessment = parseAssessment(JSON.parse(cleanedText));
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(cleanedText);
+    } catch {
+      return reply({ error: "Gemini 응답 형식이 올바르지 않습니다." }, 502);
+    }
+    const assessment = parseAssessment(parsed);
 
     if (!assessment) {
       return reply({ error: "평가 결과를 분석할 수 없습니다." }, 502);
