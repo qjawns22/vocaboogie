@@ -7,6 +7,34 @@ try {
   // Runtime without cloudflare:workers
 }
 
+let localEnvKey: string | null = null;
+try {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  for (const filename of [".env.local", ".env", ".dev.vars"]) {
+    const p = path.resolve(process.cwd(), filename);
+    if (fs.existsSync(p)) {
+      const text = fs.readFileSync(p, "utf-8");
+      for (const line of text.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("GEMINI_API_KEY=")) {
+          const val = trimmed
+            .slice("GEMINI_API_KEY=".length)
+            .trim()
+            .replace(/^["']|["']$/g, "");
+          if (val) {
+            localEnvKey = val;
+            break;
+          }
+        }
+      }
+      if (localEnvKey) break;
+    }
+  }
+} catch {
+  // Cloudflare worker runtime where fs/path may not exist
+}
+
 export const dynamic = "force-dynamic";
 
 type Submission = {
@@ -129,6 +157,8 @@ function resolveApiKey(request: Request): string | null {
     return process.env.GEMINI_API_KEY.trim();
   }
 
+  if (localEnvKey) return localEnvKey;
+
   return null;
 }
 
@@ -149,7 +179,7 @@ async function requestGemini(
     `- 한국어 제시문 (prompt): ${submission.prompt}`,
     `- 학습자가 제출한 영어 답안 (answer): ${submission.answer}`,
     ``,
-    `위 답안을 평가하여 JSON 스키마 형식으로 응답해 주세요.`
+    `위 답안을 평가하여 지정된 JSON 스키마 형식으로 응답해 주세요.`
   ].join("\n");
 
   const requestBody = {
@@ -212,22 +242,28 @@ export async function GET(request: Request) {
   const apiKey = resolveApiKey(request);
   const hasServerKey = Boolean(
     cfEnv?.GEMINI_API_KEY?.trim() ||
-    (typeof process !== "undefined" && process.env?.GEMINI_API_KEY?.trim())
+    (typeof process !== "undefined" && process.env?.GEMINI_API_KEY?.trim()) ||
+    localEnvKey
   );
 
   return reply({
     configured: Boolean(apiKey),
     hasServerKey,
     provider: "google-gemini",
-    defaultModel: cfEnv?.GEMINI_MODEL || "gemini-2.5-flash"
+    defaultModel: cfEnv?.GEMINI_MODEL || "gemini-3-flash-preview"
   });
 }
 
 export async function POST(request: Request) {
   const isChatGPTEnv = Boolean(request.headers.get("oai-authenticated-user-id"));
   if (isChatGPTEnv) {
-    const user = await getChatGPTUser();
-    if (!user) return reply({ error: "로그인이 필요합니다." }, 401);
+    try {
+      const { getChatGPTUser } = await import("../../chatgpt-auth.ts");
+      const user = await getChatGPTUser();
+      if (!user) return reply({ error: "로그인이 필요합니다." }, 401);
+    } catch {
+      return reply({ error: "인증을 확인할 수 없습니다." }, 401);
+    }
   }
 
   const apiKey = resolveApiKey(request);
@@ -235,7 +271,7 @@ export async function POST(request: Request) {
     return reply(
       {
         code: "missing_api_key",
-        error: "Gemini API 키가 설정되지 않았습니다. 상단 설정에서 Gemini API 키를 입력하거나 GEMINI_API_KEY 환경변수를 설정해 주세요."
+        error: "Gemini API 키가 설정되지 않았습니다. .env.local에 GEMINI_API_KEY를 설정해 주세요."
       },
       400
     );
@@ -254,23 +290,30 @@ export async function POST(request: Request) {
     return reply({ error: "답안을 확인해 주세요." }, 400);
   }
 
-  const primaryModel =
-    cfEnv?.GEMINI_MODEL ||
-    (typeof process !== "undefined" && process.env?.GEMINI_MODEL) ||
-    "gemini-2.5-flash";
-  const fallbackModel = "gemini-1.5-flash";
+  const candidateModels = [
+    cfEnv?.GEMINI_MODEL,
+    (typeof process !== "undefined" && process.env?.GEMINI_MODEL),
+    "gemini-3-flash-preview",
+    "gemini-flash-latest",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-2.5-flash",
+  ].filter(Boolean) as string[];
+
+  const models = Array.from(new Set(candidateModels));
 
   try {
-    let response = await requestGemini(primaryModel, apiKey, submission);
-
-    // If primary model returns 404 (model not found), retry with fallback model
-    if (response.status === 404 && primaryModel !== fallbackModel) {
-      response = await requestGemini(fallbackModel, apiKey, submission);
+    let response: Response | null = null;
+    for (const model of models) {
+      response = await requestGemini(model, apiKey, submission);
+      if ((response.status === 404 || response.status === 503) && model !== models[models.length - 1]) {
+        continue;
+      }
+      break;
     }
 
-    if (!response.ok) {
-      const status = response.status;
-      const errorJson = (await response.json().catch(() => null)) as {
+    if (!response || !response.ok) {
+      const status = response ? response.status : 502;
+      const errorJson = (response ? await response.json().catch(() => null) : null) as {
         error?: { message?: string; status?: string; code?: number };
       } | null;
 

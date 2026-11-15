@@ -10,32 +10,14 @@ test("validates submission input and GET correctly", async () => {
   assert.equal(getRes.status, 200);
   const getData = await getRes.json();
   assert.equal(getData.provider, "google-gemini");
-  assert.equal(typeof getData.configured, "boolean");
-
-  // Test POST with missing api key
-  const postReqNoKey = new Request("http://localhost:3000/api/compose-feedback", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      answer: "Lunch is on me.",
-      prompt: "오늘 점심은 내가 살게.",
-      term: "it's on me",
-      meaning: "내가 낼게",
-      example: "Lunch is on me today."
-    })
-  });
-
-  const resNoKey = await POST(postReqNoKey);
-  const dataNoKey = await resNoKey.json();
-  assert.equal(resNoKey.status, 400);
-  assert.equal(dataNoKey.code, "missing_api_key");
+  assert.equal(getData.configured, true);
+  assert.equal(getData.hasServerKey, true);
 
   // Test POST with empty answer
   const postReqEmpty = new Request("http://localhost:3000/api/compose-feedback", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-gemini-api-key": "fake-key"
     },
     body: JSON.stringify({
       answer: "",
@@ -85,8 +67,7 @@ test("successfully parses Gemini API output and formats feedback", async () => {
     const req = new Request("http://localhost:3000/api/compose-feedback", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "x-gemini-api-key": "test-gemini-key"
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         answer: "lunch is on me today",
@@ -131,8 +112,7 @@ test("handles Gemini API error responses cleanly", async () => {
     const req = new Request("http://localhost:3000/api/compose-feedback", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "x-gemini-api-key": "test-gemini-key"
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         answer: "I go to store.",

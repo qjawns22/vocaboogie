@@ -943,33 +943,15 @@
       shell.innerHTML = '<div class="study-welcome"><div class="study-graphic">✎</div><h2>뜻과 예문이 있는 단어를 추가해 주세요</h2><p>단어와 한국어 뜻, 영어 예문을 저장하면 영작 연습을 시작할 수 있어요.</p><button class="btn btn-dark" data-nav="import">단어 가져오기 →</button></div>';
       return;
     }
-    var hasGemini = Boolean(serverGeminiAvailable || getStoredGeminiKey());
-    var showConfig = (compose && compose.showConfig) || (!compose && window.__showGeminiConfig);
-    var configCardHtml = showConfig
-      ? '<div class="gemini-config-card">' +
-          '<div class="gemini-config-header"><span>✦ Google Gemini API 설정</span><button class="icon-button" data-gemini-close aria-label="닫기">×</button></div>' +
-          '<p class="gemini-config-desc">Google AI Studio에서 무료로 발급받은 API 키를 등록하면, 영작 답안을 실시간으로 상세 첨삭해 드립니다.<br><small>(입력한 키는 브라우저에 안전하게 저장되며, 서버에 .env.local로 등록할 수도 있습니다)</small></p>' +
-          '<div class="gemini-config-input-group">' +
-            '<input type="password" id="geminiKeyField" placeholder="AIzaSy... 형식의 API 키 입력" value="' + escapeHtml(getStoredGeminiKey()) + '">' +
-            '<button class="btn btn-dark" data-gemini-save-key>저장</button>' +
-            (getStoredGeminiKey() ? '<button class="btn btn-outline" data-gemini-delete-key>삭제</button>' : '') +
-          '</div>' +
-          '<div class="gemini-config-footer"><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" class="plain-link">Google AI Studio에서 무료 API 키 발급받기 ↗</a></div>' +
-        '</div>'
-      : '';
 
     if (!compose) {
-      shell.innerHTML = configCardHtml +
-        '<div class="study-welcome">' +
+      shell.innerHTML = '<div class="study-welcome">' +
           '<div class="study-graphic">✎</div>' +
           '<span class="kicker">GEMINI AI WRITING PRACTICE</span>' +
           '<h2>한국어를 영어로 써 볼까요?</h2>' +
           '<p>한국어 문장을 읽고 영어로 옮겨 보세요.<br>답안을 제출하면 <strong>Google Gemini AI</strong>가 자연스러운 표현과 문법을 점검해 줘요.</p>' +
           '<div class="gemini-status-pill">' +
-            (hasGemini
-              ? '<span class="gemini-badge active">✦ Gemini 연결됨' + (serverGeminiAvailable && !getStoredGeminiKey() ? ' (서버)' : '') + '</span>'
-              : '<span class="gemini-badge">Gemini 키 미등록 (기본 점검 모드)</span>') +
-            '<button class="btn-text-link" data-gemini-toggle-config>' + (hasGemini ? '키 관리 ⚙' : 'Gemini 키 등록하기 ↗') + '</button>' +
+            '<span class="gemini-badge active">✦ Gemini AI 첨삭 연동됨</span>' +
           '</div>' +
           '<button class="btn btn-dark" data-compose-start>영작 시작하기 →</button>' +
           '<div class="study-small">한 번에 최대 30문제 · 단어마다 예문 5개를 번갈아 연습해요</div>' +
@@ -1011,16 +993,10 @@
     } else {
       var submitButtonContent = compose.pending
         ? '<span class="inline-spinner"></span>Gemini가 평가 중…'
-        : (hasGemini ? '✦ Gemini로 답안 평가하기 →' : '답안 확인하기 →');
+        : '✦ Gemini로 답안 평가하기 →';
 
-      answerPanel = configCardHtml +
-        '<form id="composeForm" class="compose-form">' +
-          '<div class="compose-label-row">' +
-            '<label for="composeInput">내 영어 문장</label>' +
-            '<button type="button" class="gemini-toggle-btn" data-gemini-toggle-config>' +
-              (hasGemini ? '✦ Gemini 연결됨 ⚙' : '✦ Gemini 키 설정') +
-            '</button>' +
-          '</div>' +
+      answerPanel = '<form id="composeForm" class="compose-form">' +
+          '<label for="composeInput">내 영어 문장</label>' +
           '<textarea id="composeInput" rows="3" maxlength="600" placeholder="영어로 자유롭게 써 보세요" aria-label="영어 문장" required' + (compose.pending ? ' disabled' : '') + '>' + escapeHtml(compose.retryText || "") + '</textarea>' +
           '<button class="btn btn-dark" type="submit"' + (compose.pending ? ' disabled' : '') + '>' + submitButtonContent + '</button>' +
         '</form>';
@@ -1162,39 +1138,6 @@
       recordAnswer(answer === normalizeTerm(study.pool[study.index].term), -1, submittedAnswer);
     });
     byId("composeShell").addEventListener("click", function (e) {
-      if (e.target.closest("[data-gemini-toggle-config]")) {
-        if (compose) compose.showConfig = !compose.showConfig;
-        else window.__showGeminiConfig = !window.__showGeminiConfig;
-        renderCompose();
-        return;
-      }
-      if (e.target.closest("[data-gemini-close]")) {
-        if (compose) compose.showConfig = false;
-        else window.__showGeminiConfig = false;
-        renderCompose();
-        return;
-      }
-      if (e.target.closest("[data-gemini-save-key]")) {
-        var inputField = byId("geminiKeyField");
-        if (inputField) {
-          var val = inputField.value.trim();
-          setStoredGeminiKey(val);
-          if (val) toast("Gemini API 키를 저장했습니다. 이제 Gemini AI가 영작을 첨삭해요!");
-          else toast("Gemini API 키를 삭제했습니다.");
-          if (compose) compose.showConfig = false;
-          else window.__showGeminiConfig = false;
-          renderCompose();
-        }
-        return;
-      }
-      if (e.target.closest("[data-gemini-delete-key]")) {
-        setStoredGeminiKey("");
-        toast("Gemini API 키를 삭제했습니다.");
-        if (compose) compose.showConfig = false;
-        else window.__showGeminiConfig = false;
-        renderCompose();
-        return;
-      }
       if (e.target.closest("[data-compose-start], [data-compose-again]")) { startCompose(); return; }
       if (e.target.closest("[data-compose-retry]") && compose && compose.draft !== null) {
         compose.retryText = compose.draft;
@@ -1253,7 +1196,7 @@
         if (compose !== session) return;
         var fallbackMsg = error && error.message ? error.message : "AI 평가를 불러오지 못해 기본 점검을 보여드려요.";
         if (error && error.code === "missing_api_key") {
-          fallbackMsg = "Gemini API 키가 설정되지 않아 기본 점검을 보여드려요. 상단 ‘✦ Gemini 키 설정’에서 키를 등록할 수 있어요.";
+          fallbackMsg = "Gemini API 키가 설정되지 않아 기본 점검을 보여드려요. (.env.local에 GEMINI_API_KEY 확인)";
         }
         session.feedback = Object.assign(window.WordkitComposeFeedback(answer, word), {
           source: "basic",
