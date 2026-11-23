@@ -33,6 +33,8 @@
   var state = loadState();
   var draftRows = [];
   var currentFilter = "all";
+  var selectedWordDate = "all";
+  var wordCalendarMonth = null;
   var currentPage = "home";
   var study = null;
   var compose = null;
@@ -125,7 +127,8 @@
     return "그 " + meaning + "에 대해 더 알고 싶어.";
   }
   var toastTimer = null;
-  var photoUrl = null;
+  var photoUrls = [];
+  var photoImportVersion = 0;
 
   function byId(id) { return document.getElementById(id); }
   function escapeHtml(value) {
@@ -444,13 +447,24 @@
     if (/\.(xlsx|xls|csv|tsv)$/.test(name)) return "excel";
     return "";
   }
-  async function acceptFile(file) {
-    if (!file) return;
-    var kind = fileKind(file);
-    if (!kind) { toast("사진 또는 엑셀 파일을 선택해 주세요."); return; }
+  function isHeicPhoto(file) {
+    return /image\/hei[cf]/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
+  }
+  async function acceptFiles(fileList) {
+    var files = Array.from(fileList || []);
+    if (!files.length) return;
+    var kinds = files.map(fileKind);
+    if (kinds.every(function (kind) { return kind === "photo"; })) {
+      go("import");
+      await readPhotos(files);
+      return;
+    }
+    if (files.length !== 1 || kinds[0] !== "excel") {
+      toast("사진은 여러 장 선택할 수 있고, 엑셀은 한 번에 한 파일씩 올려주세요.");
+      return;
+    }
     go("import");
-    if (kind === "photo") await readPhoto(file);
-    else await readSpreadsheet(file);
+    await readSpreadsheet(files[0]);
   }
   function showReview(summary, isPhoto) {
     byId("reviewPanel").hidden = false;
@@ -459,12 +473,18 @@
     byId("reviewPanel").scrollIntoView({ behavior: "smooth", block: "start" });
   }
   function clearDraft() {
+    photoImportVersion++;
     draftRows = [];
     byId("reviewPanel").hidden = true;
     byId("ocrProgress").hidden = true;
     byId("ocrText").value = "";
-    if (photoUrl) URL.revokeObjectURL(photoUrl);
-    photoUrl = null;
+    photoUrls.forEach(function (url) { URL.revokeObjectURL(url); });
+    photoUrls = [];
+    byId("ocrImage").removeAttribute("src");
+    byId("photoPreviews").replaceChildren();
+    byId("photoPreviews").hidden = true;
+    byId("saveDraft").disabled = false;
+    byId("exportDraftButton").disabled = false;
     byId("photoInput").value = "";
     byId("excelInput").value = "";
     byId("anyInput").value = "";
@@ -490,76 +510,109 @@
     });
     return result.slice(0, 300);
   }
-  async function makeOcrImage(file) {
-    var url = URL.createObjectURL(file);
-    try {
-      var image = await new Promise(function (resolve, reject) {
-        var img = new Image();
-        img.onload = function () { resolve(img); };
-        img.onerror = reject;
-        img.src = url;
-      });
-      var scale = Math.min(2, Math.max(1, 1700 / Math.max(image.width, image.height)));
-      if (Math.max(image.width, image.height) * scale > 2600) scale = 2600 / Math.max(image.width, image.height);
-      var canvas = document.createElement("canvas");
-      canvas.width = Math.round(image.width * scale);
-      canvas.height = Math.round(image.height * scale);
-      var context = canvas.getContext("2d", { willReadFrequently: true });
-      context.fillStyle = "#fff";
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      var pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-      for (var i = 0; i < pixels.data.length; i += 4) {
-        var gray = 0.299 * pixels.data[i] + 0.587 * pixels.data[i + 1] + 0.114 * pixels.data[i + 2];
-        var value = Math.max(0, Math.min(255, (gray - 128) * 1.34 + 138));
-        pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = value;
-        pixels.data[i + 3] = 255;
-      }
-      context.putImageData(pixels, 0, 0);
-      return canvas;
-    } finally { URL.revokeObjectURL(url); }
-  }
-  async function readPhoto(file) {
-    clearDraft();
-    if (file.size > 20 * 1024 * 1024) { toast("사진은 20MB 이하로 올려주세요."); return; }
-    photoUrl = URL.createObjectURL(file);
-    byId("ocrImage").src = photoUrl;
-    byId("ocrText").value = "";
-    showReview(file.name + " · 읽어낸 글씨를 확인하고 단어를 수정해 주세요.", true);
-    byId("ocrProgress").hidden = false;
-    byId("ocrProgressText").textContent = "손글씨를 읽을 준비 중… 처음에는 모델을 불러오는 데 잠시 걸려요.";
+  function showGeminiEntries(entries) {
+    draftRows = entries.map(function (entry) {
+      return {
+        term: entry.term,
+        meaning: entry.meaning,
+        example: entry.examples[0],
+        extraExamples: entry.examples.slice(1),
+        originalTerm: entry.originalTerm,
+        correction: entry.correction,
+        meaningFilled: entry.meaningFilled
+      };
+    });
+    byId("ocrText").value = draftRows.map(function (row) { return row.term + " : " + row.meaning; }).join("\n");
     renderDraft();
-    if (!window.Tesseract) {
-      byId("ocrProgress").hidden = true;
-      toast("사진 인식 도구를 불러오지 못했어요. 오른쪽에 단어를 직접 적을 수 있어요.");
+    var changed = draftRows.filter(function (row) { return row.correction || row.meaningFilled; }).length;
+    byId("reviewSummary").textContent = draftRows.length + "개 단어를 찾았어요" + (changed ? " · 교정/뜻 보완 " + changed + "개" : "") + ". 확인 후 단어장에 추가해 주세요.";
+  }
+  function showPhotoPreviews(files) {
+    var holder = byId("photoPreviews");
+    photoUrls = files.map(function (file) { return URL.createObjectURL(file); });
+    byId("ocrImage").src = photoUrls[0];
+    holder.hidden = files.length < 2;
+    files.forEach(function (file, index) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "photo-thumbnail" + (index === 0 ? " active" : "");
+      button.setAttribute("aria-label", (index + 1) + "번째 사진 보기: " + file.name);
+      var image = document.createElement("img");
+      image.src = photoUrls[index];
+      image.alt = "";
+      button.appendChild(image);
+      button.addEventListener("click", function () {
+        byId("ocrImage").src = photoUrls[index];
+        holder.querySelectorAll(".photo-thumbnail").forEach(function (item) { item.classList.remove("active"); });
+        button.classList.add("active");
+      });
+      holder.appendChild(button);
+    });
+  }
+  async function readPhotos(files) {
+    if (files.some(function (file) { return !file.size || file.size > 10 * 1024 * 1024 || (!isHeicPhoto(file) && !["image/jpeg", "image/png", "image/webp"].includes(file.type)); })) {
+      toast("JPG, PNG, WEBP, HEIC 사진을 장당 10MB 이하로 올려주세요.");
       return;
     }
-    var worker = null;
-    try {
-      var image = await makeOcrImage(file);
-      worker = await Tesseract.createWorker("eng", 1, {
-        workerPath: new URL("/legacy/tesseract-worker.min.js", location.href).href,
-        corePath: new URL("/legacy/ocr/core", location.href).href,
-        langPath: new URL("/legacy/ocr/lang", location.href).href,
-        logger: function (m) {
-          var percent = Math.round((m.progress || 0) * 100);
-          byId("ocrProgressText").textContent = (m.status === "recognizing text" ? "글씨를 읽는 중" : "인식 도구 준비 중") + "… " + percent + "%";
+    clearDraft();
+    var importVersion = photoImportVersion;
+    byId("ocrText").value = "";
+    showReview(files.length + "장 사진을 준비하고 있어요.", true);
+    byId("ocrProgress").hidden = false;
+    byId("saveDraft").disabled = true;
+    byId("exportDraftButton").disabled = true;
+    renderDraft();
+    var entries = [];
+    var failures = [];
+    var prepared = [];
+    for (var i = 0; i < files.length; i++) {
+      if (importVersion !== photoImportVersion) return;
+      try {
+        var converted = files[i];
+        if (isHeicPhoto(converted)) {
+          byId("ocrProgressText").textContent = (i + 1) + "/" + files.length + "번째 HEIC 사진을 변환하는 중…";
+          if (!window.convertHeicToJpeg) throw new Error("HEIC 변환 도구를 불러오지 못했어요.");
+          converted = await window.convertHeicToJpeg(converted);
+          if (converted.size > 10 * 1024 * 1024) throw new Error("변환한 사진이 10MB를 넘었어요.");
         }
-      });
-      var result = await worker.recognize(image);
-      var raw = result.data.text.trim();
-      byId("ocrText").value = raw;
-      draftRows = parseText(raw).map(curateDraftRow);
-      renderDraft();
-      byId("reviewSummary").textContent = draftRows.length + "개 후보를 찾았어요. 손글씨는 틀릴 수 있으니 반드시 확인해 주세요.";
-      if (!raw) toast("읽어낸 글씨가 없어요. 사진을 다시 찍거나 직접 적어 주세요.");
-    } catch (error) {
-      console.error("OCR failed", error);
-      toast("사진 자동 인식에 실패했어요. 읽어낸 글씨 칸에 단어를 직접 적어 주세요.");
-      byId("reviewSummary").textContent = "사진을 보면서 오른쪽 칸에 한 줄에 한 단어씩 적을 수 있어요.";
-    } finally {
-      if (worker) await worker.terminate().catch(function () {});
+        if (importVersion !== photoImportVersion) return;
+        prepared.push({ original: files[i], image: converted, position: i + 1 });
+      } catch (error) {
+        if (importVersion !== photoImportVersion) return;
+        console.error("HEIC photo conversion failed", error);
+        failures.push(files[i].name);
+        toast((i + 1) + "번째 사진 변환 실패: " + (error.message || "다시 시도해 주세요."));
+      }
+    }
+    if (prepared.length) showPhotoPreviews(prepared.map(function (item) { return item.image; }));
+    for (var j = 0; j < prepared.length; j++) {
+      if (importVersion !== photoImportVersion) return;
+      byId("ocrProgressText").textContent = "Gemini가 " + prepared[j].position + "/" + files.length + "번째 사진의 단어·뜻·예문을 정리하는 중…";
+      try {
+        var form = new FormData();
+        form.append("photo", prepared[j].image);
+        var headers = {};
+        var customKey = getStoredGeminiKey();
+        if (customKey) headers["x-gemini-api-key"] = customKey;
+        var response = await fetch("/api/import-photo", { method: "POST", headers: headers, body: form });
+        var result = await response.json();
+        if (!response.ok) throw new Error(result.error || "사진 분석에 실패했어요.");
+        if (importVersion !== photoImportVersion) return;
+        entries.push.apply(entries, result.entries);
+        showGeminiEntries(entries);
+      } catch (error) {
+        if (importVersion !== photoImportVersion) return;
+        console.error("Gemini photo import failed", error);
+        failures.push(prepared[j].original.name);
+        toast(prepared[j].position + "번째 사진 분석 실패: " + (error.message || "다시 시도해 주세요."));
+      }
+    }
+    if (importVersion === photoImportVersion) {
       byId("ocrProgress").hidden = true;
+      byId("saveDraft").disabled = false;
+      byId("exportDraftButton").disabled = false;
+      byId("reviewSummary").textContent = files.length + "장 중 " + (files.length - failures.length) + "장 분석 완료 · " + draftRows.length + "개 단어" + (failures.length ? " · 실패: " + failures.join(", ") : "") + ". 확인 후 단어장에 추가해 주세요.";
+      if (!draftRows.length) toast("사진에서 영어 표현을 찾지 못했어요. 다른 사진을 올리거나 직접 적어 주세요.");
     }
   }
   function bestColumns(rows) {
@@ -648,7 +701,9 @@
       var extraInputs = [0, 1, 2, 3].map(function (slot) {
         return '<label>예문 ' + (slot + 2) + '<input data-extra-slot="' + slot + '" aria-label="' + (index + 1) + '번째 단어의 추가 예문 ' + (slot + 2) + '" value="' + escapeHtml(additional[slot] || "") + '" placeholder="추가 영어 예문"></label>';
       }).join("");
-      return '<tr data-index="' + index + '"><td><input data-field="term" aria-label="' + (index + 1) + '번째 영단어" value="' + escapeHtml(row.term) + '" placeholder="영단어"></td><td><input data-field="meaning" aria-label="' + (index + 1) + '번째 뜻" value="' + escapeHtml(row.meaning) + '" placeholder="뜻"></td><td><input data-field="example" aria-label="' + (index + 1) + '번째 대표 예문" value="' + escapeHtml(row.example) + '" placeholder="대표 예문"><details class="draft-extra"><summary>추가 예문 ' + count + '개 확인·수정</summary><div>' + extraInputs + '</div></details></td><td><button class="row-remove" data-remove="' + index + '" aria-label="' + (index + 1) + '번째 단어 삭제">×</button></td></tr>';
+      var note = row.correction ? '<small class="draft-note">오타 수정: ' + escapeHtml(row.originalTerm || "원문") + '</small>' : "";
+      if (row.meaningFilled) note += '<small class="draft-note">빈 뜻 보완</small>';
+      return '<tr data-index="' + index + '"><td><input data-field="term" aria-label="' + (index + 1) + '번째 영단어" value="' + escapeHtml(row.term) + '" placeholder="영단어">' + note + '</td><td><input data-field="meaning" aria-label="' + (index + 1) + '번째 뜻" value="' + escapeHtml(row.meaning) + '" placeholder="뜻"></td><td><input data-field="example" aria-label="' + (index + 1) + '번째 대표 예문" value="' + escapeHtml(row.example) + '" placeholder="대표 예문"><details class="draft-extra"><summary>추가 예문 ' + count + '개 확인·수정</summary><div>' + extraInputs + '</div></details></td><td><button class="row-remove" data-remove="' + index + '" aria-label="' + (index + 1) + '번째 단어 삭제">×</button></td></tr>';
     }).join("");
   }
   function collectDraftInputs() {
@@ -693,20 +748,44 @@
     toast(added + "개 단어를 추가했어요" + (updated ? " · " + updated + "개 항목을 업데이트했어요" : "") + "!");
     go("words");
   }
+  function renderWordCalendar(dateCounts) {
+    var dateKeys = Array.from(dateCounts.keys()).filter(function (key) { return key !== "unknown"; }).sort().reverse();
+    if (!wordCalendarMonth) {
+      var initial = selectedWordDate !== "all" && selectedWordDate !== "unknown" ? selectedWordDate : dateKeys[0] || todayKey();
+      var initialDate = new Date(initial + "T12:00:00");
+      wordCalendarMonth = new Date(initialDate.getFullYear(), initialDate.getMonth(), 1);
+    }
+    var year = wordCalendarMonth.getFullYear();
+    var month = wordCalendarMonth.getMonth();
+    byId("wordCalendarMonth").textContent = year + "년 " + (month + 1) + "월";
+    var cells = Array(new Date(year, month, 1).getDay()).fill('<span class="date-picker-blank" aria-hidden="true"></span>');
+    var days = new Date(year, month + 1, 0).getDate();
+    for (var day = 1; day <= days; day++) {
+      var key = todayKey(new Date(year, month, day));
+      var count = dateCounts.get(key) || 0;
+      cells.push('<button type="button" class="date-picker-day' + (key === selectedWordDate ? ' selected' : '') + (key === todayKey() ? ' today' : '') + '" data-calendar-date="' + key + '" aria-label="' + year + '년 ' + (month + 1) + '월 ' + day + '일' + (count ? ', 단어 ' + count + '개' : ', 단어 없음') + '"' + (count ? '' : ' disabled') + '><span>' + day + '</span>' + (count ? '<small>' + count + '개</small>' : '') + '</button>');
+    }
+    byId("wordCalendarGrid").innerHTML = cells.join("");
+    byId("wordDatePopover").querySelector("[data-calendar-all]").classList.toggle("selected", selectedWordDate === "all");
+    var unknown = byId("wordDatePopover").querySelector("[data-calendar-unknown]");
+    unknown.hidden = !dateCounts.has("unknown");
+    unknown.classList.toggle("selected", selectedWordDate === "unknown");
+  }
+  function closeWordCalendar() {
+    byId("wordDatePopover").hidden = true;
+    byId("wordDateToggle").setAttribute("aria-expanded", "false");
+  }
   function renderWords() {
     var search = normalizeTerm(byId("wordSearch").value);
-    var dateSelect = byId("wordDateFilter");
-    var selectedDate = dateSelect.value;
     var dateFormatter = new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
-    var dates = Array.from(new Set(state.words.map(wordDateKey))).sort().reverse();
-    dateSelect.innerHTML = '<option value="all">모든 날짜</option>' + dates.map(function (key) {
-      var label = key === "unknown" ? "날짜 정보 없음" : dateFormatter.format(new Date(key + "T12:00:00"));
-      return '<option value="' + key + '">' + escapeHtml(label) + ' (' + state.words.filter(function (w) { return wordDateKey(w) === key; }).length + '개)</option>';
-    }).join("");
-    dateSelect.value = dates.includes(selectedDate) ? selectedDate : "all";
+    var dateCounts = new Map();
+    state.words.forEach(function (word) { var key = wordDateKey(word); dateCounts.set(key, (dateCounts.get(key) || 0) + 1); });
+    if (selectedWordDate !== "all" && !dateCounts.has(selectedWordDate)) selectedWordDate = "all";
+    byId("wordDateLabel").textContent = selectedWordDate === "all" ? "모든 날짜" : selectedWordDate === "unknown" ? "날짜 정보 없음" : dateFormatter.format(new Date(selectedWordDate + "T12:00:00"));
+    renderWordCalendar(dateCounts);
     var now = Date.now();
     var list = state.words.slice().sort(function (a, b) { return (b.addedAt || 0) - (a.addedAt || 0); }).filter(function (w) {
-      if (dateSelect.value !== "all" && wordDateKey(w) !== dateSelect.value) return false;
+      if (selectedWordDate !== "all" && wordDateKey(w) !== selectedWordDate) return false;
       if (search && !(normalizeTerm(w.term + " " + w.meaning + " " + w.example).includes(search))) return false;
       if (currentFilter === "mastered" && Number(w.level || 0) < 3) return false;
       return true;
@@ -801,16 +880,27 @@
     words.forEach(function (word, index) { word.addedAt = addedAt + words.length - index; });
     persist(); renderWords(); toast(words.length + "개 단어의 날짜를 바꿨어요.");
   }
-  function exportCsv() {
-    if (!state.words.length) { toast("내보낼 단어가 없어요."); return; }
-    var quote = function (v) { return '"' + String(v || "").replace(/"/g, '""') + '"'; };
-    var content = "\uFEFF" + [["단어", "뜻", "예문", "예문2", "예문3", "예문4", "예문5"], ...state.words.map(function (w) { var extras = extraExamples(w); return [w.term, w.meaning, w.example].concat([0, 1, 2, 3].map(function (i) { return extras[i] ? extras[i].english : ""; })); })].map(function (r) { return r.map(quote).join(","); }).join("\r\n");
-    var url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
-    var link = document.createElement("a");
-    link.href = url; link.download = "vocabooki-words-" + todayKey() + ".csv";
-    document.body.appendChild(link); link.click(); link.remove();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-    toast("단어장을 CSV로 내보냈어요.");
+  async function exportWorkbook(fromDraft) {
+    if (fromDraft) collectDraftInputs();
+    var words = (fromDraft ? draftRows : state.words).filter(function (w) { return String(w.term || "").trim(); }).map(function (w) {
+      var extras = fromDraft ? (w.extraExamples || []) : extraExamples(w).map(function (entry) { return entry.english; });
+      return { term: w.term, meaning: w.meaning || "", examples: [w.example || ""].concat([0, 1, 2, 3].map(function (i) { return extras[i] || ""; })) };
+    });
+    if (!words.length) { toast("내보낼 단어가 없어요."); return; }
+    try {
+      var response = await fetch("/api/export-workbook", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ words: words }) });
+      if (!response.ok) {
+        var data = await response.json().catch(function () { return {}; });
+        throw new Error(data.error || "엑셀 파일을 만들지 못했어요.");
+      }
+      var url = URL.createObjectURL(await response.blob());
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = "Vocabulary_Workbook_" + todayKey().replace(/-/g, "") + ".xlsx";
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      toast(words.length + "개 단어를 엑셀로 내보냈어요.");
+    } catch (error) { toast(error.message || "엑셀 내보내기에 실패했어요."); }
   }
   function shuffle(list) {
     var arr = list.slice();
@@ -885,7 +975,8 @@
     }
     body += '<div class="question-bottom"><small>' + (answered ? "헷갈린 단어는 더 자주 나와요." : "천천히 생각해도 괜찮아요.") + '</small>' + (answered ? '<button class="btn btn-dark" data-study-next>다음 단어 →</button>' : "") + '</div></div>';
     shell.innerHTML = head + body;
-    if (mode !== "choice" && (study.hidden || mode === "type") && !answered) byId("answerInput").focus();
+    if (answered) shell.querySelector("[data-study-next]").focus();
+    else if (mode !== "choice" && (study.hidden || mode === "type") && !window.matchMedia("(max-width: 840px)").matches) byId("answerInput").focus();
   }
   function recordAnswer(correct, choiceIndex, submittedAnswer) {
     if (!study || study.feedback) return;
@@ -919,6 +1010,14 @@
     state.dayAnswers++;
     study.feedback = { correct: correct, choiceIndex: choiceIndex };
     persist();
+    renderStudy();
+  }
+  function advanceStudy() {
+    if (!study || !study.feedback) return;
+    study.index++;
+    study.feedback = null;
+    study.hidden = false;
+    study.choiceOptions = null;
     renderStudy();
   }
   function startCompose() {
@@ -1033,7 +1132,20 @@
     renderCompose();
   }
   function initEvents() {
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !byId("wordDatePopover").hidden) {
+        closeWordCalendar();
+        byId("wordDateToggle").focus();
+        return;
+      }
+      if (e.key !== "Enter" || e.repeat || e.isComposing || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+      if (!study || !study.feedback || !byId("page-study").classList.contains("active")) return;
+      if (e.target instanceof Element && e.target.closest("a, button, input, textarea, select, [contenteditable]")) return;
+      e.preventDefault();
+      advanceStudy();
+    });
     document.addEventListener("click", function (event) {
+      if (!event.target.closest(".date-picker")) closeWordCalendar();
       var nav = event.target.closest("[data-nav]");
       if (nav) { event.preventDefault(); go(nav.getAttribute("data-nav")); return; }
     });
@@ -1044,7 +1156,7 @@
     byId("dropZone").addEventListener("click", function () { byId("anyInput").click(); });
     byId("dropZone").addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); byId("anyInput").click(); } });
     ["photoInput", "excelInput", "anyInput"].forEach(function (id) {
-      byId(id).addEventListener("change", function (e) { acceptFile(e.target.files[0]); });
+      byId(id).addEventListener("change", function (e) { acceptFiles(e.target.files); });
     });
     ["dragenter", "dragover"].forEach(function (name) {
       byId("dropZone").addEventListener(name, function (e) { e.preventDefault(); e.currentTarget.classList.add("dragging"); });
@@ -1052,13 +1164,25 @@
     ["dragleave", "drop"].forEach(function (name) {
       byId("dropZone").addEventListener(name, function (e) { e.preventDefault(); e.currentTarget.classList.remove("dragging"); });
     });
-    byId("dropZone").addEventListener("drop", function (e) { acceptFile(e.dataTransfer.files[0]); });
+    byId("dropZone").addEventListener("drop", function (e) { acceptFiles(e.dataTransfer.files); });
     byId("clearDraft").addEventListener("click", clearDraft);
-    byId("parseOcrButton").addEventListener("click", function () {
-      draftRows = parseText(byId("ocrText").value).map(curateDraftRow);
-      renderDraft();
-      byId("reviewSummary").textContent = draftRows.length + "개 후보를 추출했어요. 표에서 수정한 뒤 추가해 주세요.";
-      if (!draftRows.length) toast("한 줄에 한 단어씩 적어 주세요.");
+    byId("parseOcrButton").addEventListener("click", async function () {
+      var typedText = byId("ocrText").value.trim();
+      if (!typedText) { toast("한 줄에 한 단어씩 적어 주세요."); return; }
+      byId("ocrProgress").hidden = false;
+      byId("ocrProgressText").textContent = "Gemini가 수정한 목록의 뜻과 예문을 정리하는 중…";
+      try {
+        var form = new FormData();
+        form.append("text", typedText);
+        var headers = {};
+        var customKey = getStoredGeminiKey();
+        if (customKey) headers["x-gemini-api-key"] = customKey;
+        var response = await fetch("/api/import-photo", { method: "POST", headers: headers, body: form });
+        var result = await response.json();
+        if (!response.ok) throw new Error(result.error || "목록 분석에 실패했어요.");
+        showGeminiEntries(result.entries);
+      } catch (error) { toast(error.message || "목록 분석에 실패했어요."); }
+      finally { byId("ocrProgress").hidden = true; }
     });
     byId("addDraftRow").addEventListener("click", function () { collectDraftInputs(); draftRows.push({ term: "", meaning: "", example: "" }); renderDraft(); byId("draftBody").lastElementChild.querySelector("input").focus(); });
     byId("draftBody").addEventListener("click", function (e) {
@@ -1075,7 +1199,29 @@
       renderDraft();
     });
     byId("wordSearch").addEventListener("input", renderWords);
-    byId("wordDateFilter").addEventListener("change", renderWords);
+    byId("wordDateToggle").addEventListener("click", function () {
+      var popover = byId("wordDatePopover");
+      popover.hidden = !popover.hidden;
+      byId("wordDateToggle").setAttribute("aria-expanded", String(!popover.hidden));
+      if (!popover.hidden) renderWords();
+    });
+    byId("wordDatePopover").addEventListener("click", function (e) {
+      var previous = e.target.closest("[data-calendar-prev]");
+      var next = e.target.closest("[data-calendar-next]");
+      if (previous || next) {
+        wordCalendarMonth = new Date(wordCalendarMonth.getFullYear(), wordCalendarMonth.getMonth() + (next ? 1 : -1), 1);
+        renderWords();
+        return;
+      }
+      var date = e.target.closest("[data-calendar-date]");
+      var all = e.target.closest("[data-calendar-all]");
+      var unknown = e.target.closest("[data-calendar-unknown]");
+      if (!date && !all && !unknown) return;
+      selectedWordDate = date ? date.getAttribute("data-calendar-date") : unknown ? "unknown" : "all";
+      closeWordCalendar();
+      renderWords();
+      byId("wordDateToggle").focus();
+    });
     document.querySelectorAll("[data-filter]").forEach(function (button) {
       button.addEventListener("click", function () {
         currentFilter = button.getAttribute("data-filter");
@@ -1112,7 +1258,8 @@
         }
       }
     });
-    byId("exportButton").addEventListener("click", exportCsv);
+    byId("exportButton").addEventListener("click", function () { exportWorkbook(false); });
+    byId("exportDraftButton").addEventListener("click", function () { exportWorkbook(true); });
     byId("studyShell").addEventListener("click", function (e) {
       var dateButton = e.target.closest("[data-study-date]");
       if (dateButton) { startStudy(dateButton.getAttribute("data-study-date")); return; }
@@ -1126,9 +1273,7 @@
         var index = Number(choice.getAttribute("data-choice"));
         recordAnswer(study.choiceOptions[index] === study.pool[study.index].meaning, index);
       }
-      if (e.target.closest("[data-study-next]") && study) {
-        study.index++; study.feedback = null; study.hidden = false; study.choiceOptions = null; renderStudy();
-      }
+      if (e.target.closest("[data-study-next]")) advanceStudy();
     });
     byId("studyShell").addEventListener("submit", function (e) {
       if (e.target.id !== "answerForm") return;

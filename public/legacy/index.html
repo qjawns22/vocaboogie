@@ -7,14 +7,13 @@
   <meta name="description" content="손글씨 사진과 엑셀 파일에서 영어 단어를 가져와 정리하고, 짧은 퀴즈로 복습하는 나만의 단어장">
   <title>보카북이 — 사진에서 단어장까지</title>
   <link rel="icon" href="./favicon.svg?v=4" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=12">
+  <link rel="stylesheet" href="./styles.css?v=16">
   <script src="./xlsx.full.min.js" defer></script>
-  <script src="./tesseract.min.js" defer></script>
   <script src="./curated-vocab.js" defer></script>
   <script src="./compose-feedback.js?v=2" defer></script>
   <script src="./compose-prompts.js?v=2" defer></script>
   <script src="./extra-examples.js?v=1" defer></script>
-  <script src="./app.js?v=19" defer></script>
+  <script src="./app.js?v=27" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -53,7 +52,7 @@
           <div class="hero-copy">
             <div class="eyebrow"><span class="eyebrow-line"></span> YOUR WORDS, YOUR WAY</div>
             <h1 id="homeTitle">사진 속 단어가<br><em>내 실력</em>이 되는 곳.</h1>
-            <p>손글씨 사진이나 엑셀 파일을 올려보세요.<br>단어장을 만들고, 내 속도에 맞춰 외워요.</p>
+            <p>영어 노트 사진이나 엑셀 파일을 올려보세요.<br>단어장을 만들고, 내 속도에 맞춰 외워요.</p>
             <div class="hero-actions">
               <button class="btn btn-dark" data-nav="import">단어 가져오기 <span aria-hidden="true">↗</span></button>
               <button class="btn btn-text" data-nav="study">바로 학습하기 <span aria-hidden="true">→</span></button>
@@ -93,30 +92,30 @@
       </section>
 
       <section class="page" id="page-import" aria-labelledby="importTitle">
-        <div class="page-intro"><span class="kicker">BUILD YOUR WORD BANK</span><h1 id="importTitle">단어를 데려와요<span class="accent-period">.</span></h1><p>사진은 손글씨를 읽어 단어 후보를 만들고, 엑셀은 표의 단어를 가져옵니다. 저장 전에 언제든 수정할 수 있어요.</p></div>
+        <div class="page-intro"><span class="kicker">BUILD YOUR WORD BANK</span><h1 id="importTitle">단어를 데려와요<span class="accent-period">.</span></h1><p>사진은 Gemini가 단어·뜻·예문을 정리하고, 엑셀은 표의 단어를 가져옵니다. 저장 전에 언제든 수정할 수 있어요.</p></div>
         <div class="upload-grid">
-          <button class="upload-card" id="photoUploadCard"><span class="upload-illustration photo-illustration" aria-hidden="true"><span>abc</span><i>✦</i></span><span class="upload-meta"><span class="upload-badge">01 · PHOTO</span><strong>사진에서 가져오기</strong><small>JPG, PNG, WEBP · 손글씨도 인식 시도</small></span><span class="upload-arrow" aria-hidden="true">↗</span></button>
+          <button class="upload-card" id="photoUploadCard"><span class="upload-illustration photo-illustration" aria-hidden="true"><span>abc</span><i>✦</i></span><span class="upload-meta"><span class="upload-badge">01 · PHOTO</span><strong>사진에서 가져오기</strong><small>JPG, PNG, WEBP, HEIC · 여러 장 선택 가능</small></span><span class="upload-arrow" aria-hidden="true">↗</span></button>
           <button class="upload-card" id="excelUploadCard"><span class="upload-illustration excel-illustration" aria-hidden="true"><span>A&nbsp; B<br>1&nbsp; ✦<br>2&nbsp; ✦</span></span><span class="upload-meta"><span class="upload-badge">02 · SPREADSHEET</span><strong>엑셀에서 가져오기</strong><small>XLSX, XLS, CSV, TSV · 여러 시트 지원</small></span><span class="upload-arrow" aria-hidden="true">↗</span></button>
         </div>
-        <div class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="파일을 끌어다 놓거나 선택하기"><span class="drop-icon" aria-hidden="true">⇧</span><strong>파일을 이곳에 놓아주세요</strong><span>또는 클릭해서 사진·엑셀 파일을 선택해요</span></div>
-        <input type="file" id="photoInput" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" hidden>
+        <div class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="파일을 끌어다 놓거나 선택하기"><span class="drop-icon" aria-hidden="true">⇧</span><strong>파일을 이곳에 놓아주세요</strong><span>또는 클릭해서 사진 여러 장·엑셀 파일을 선택해요</span></div>
+        <input type="file" id="photoInput" accept="image/png,image/jpeg,image/webp,image/heic,image/heif,.heic,.heif" multiple hidden>
         <input type="file" id="excelInput" accept=".xlsx,.xls,.csv,.tsv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/tab-separated-values" hidden>
-        <input type="file" id="anyInput" accept="image/*,.xlsx,.xls,.csv,.tsv" hidden>
+        <input type="file" id="anyInput" accept="image/*,.heic,.heif,.xlsx,.xls,.csv,.tsv" multiple hidden>
         <div class="import-info"><div><span aria-hidden="true">✳</span><strong>손글씨 인식 팁</strong><p>밝은 곳에서 글씨가 크게 보이게 촬영하면 더 잘 읽어요. 인식 결과는 아래에서 직접 고칠 수 있습니다.</p></div><div><span aria-hidden="true">◫</span><strong>엑셀 형식</strong><p>1열 단어, 2열 뜻, 3열 대표 예문, 4~7열 추가 예문을 읽어요. 추가 예문은 영작 연습에 사용합니다.</p></div></div>
         <p class="import-example-note">기존 단어 목록과 일치하는 표현에는 쉬운 영어 회화 예문이 자동으로 채워집니다.</p>
         <div class="sample-row"><span>먼저 사용해 보고 싶다면</span><button class="plain-link" id="sampleButton">연습 단어 6개 추가하기 ↗</button></div>
         <div class="review-panel" id="reviewPanel" hidden>
           <div class="review-header"><div><span class="kicker">REVIEW BEFORE SAVING</span><h2>단어를 확인해 주세요</h2><p id="reviewSummary"></p></div><button class="icon-button" id="clearDraft" aria-label="가져오기 닫기">×</button></div>
-          <div class="ocr-layout" id="ocrLayout" hidden><div class="ocr-image-wrap"><img id="ocrImage" alt="올린 단어 사진 미리보기"></div><div class="ocr-text-wrap"><label for="ocrText">읽어낸 글씨 <span>틀린 부분을 고친 뒤 다시 추출하세요.</span></label><textarea id="ocrText" rows="8" spellcheck="false"></textarea><button class="btn btn-outline" id="parseOcrButton">수정한 글씨로 다시 추출</button></div></div>
+          <div class="ocr-layout" id="ocrLayout" hidden><div class="photo-preview-area"><div class="ocr-image-wrap"><img id="ocrImage" alt="올린 단어 사진 미리보기"></div><div class="photo-thumbnails" id="photoPreviews" aria-label="선택한 사진" hidden></div></div><div class="ocr-text-wrap"><label for="ocrText">인식한 단어·뜻 <span>틀린 부분을 고친 뒤 다시 추출하세요.</span></label><textarea id="ocrText" rows="8" spellcheck="false"></textarea><button class="btn btn-outline" id="parseOcrButton">수정한 글씨로 다시 추출</button></div></div>
           <div class="ocr-progress" id="ocrProgress" hidden><span class="spinner"></span><span id="ocrProgressText">사진 속 글씨를 읽는 중…</span></div>
           <div class="draft-table-wrap"><table class="draft-table"><thead><tr><th>영단어 / 표현</th><th>뜻 <span>(선택)</span></th><th>대표 예문 <span>(선택)</span></th><th><span class="sr-only">삭제</span></th></tr></thead><tbody id="draftBody"></tbody></table></div>
-          <div class="review-actions"><button class="btn btn-outline" id="addDraftRow">+ 빈 줄 추가</button><button class="btn btn-dark" id="saveDraft">단어장에 추가 <span aria-hidden="true">→</span></button></div>
+          <div class="review-actions"><button class="btn btn-outline" id="addDraftRow">+ 빈 줄 추가</button><button class="btn btn-outline" id="exportDraftButton">엑셀 다운로드 ↓</button><button class="btn btn-dark" id="saveDraft">단어장에 추가 <span aria-hidden="true">→</span></button></div>
         </div>
       </section>
 
       <section class="page" id="page-words" aria-labelledby="wordsTitle">
         <div class="page-intro page-intro-row"><div><span class="kicker">MY WORD BANK</span><h1 id="wordsTitle">내 단어장<span class="accent-period">.</span></h1><p>단어를 추가한 날짜별로 살펴보고, 날짜가 다르면 수정할 수 있어요.</p></div><button class="btn btn-dark" data-nav="import">+ 단어 추가</button></div>
-        <div class="word-tools"><label class="search-box"><span aria-hidden="true">⌕</span><input id="wordSearch" type="search" placeholder="단어 또는 뜻 검색" aria-label="단어 또는 뜻 검색"></label><label class="date-search-label">업로드 날짜 <select id="wordDateFilter" aria-label="업로드 날짜로 검색"><option value="all">모든 날짜</option></select></label><div class="filter-group" role="group" aria-label="단어 필터"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="mastered">익숙한 단어</button></div><button class="plain-link export-link" id="exportButton">CSV 내보내기 ↗</button></div>
+        <div class="word-tools"><label class="search-box"><span aria-hidden="true">⌕</span><input id="wordSearch" type="search" placeholder="단어 또는 뜻 검색" aria-label="단어 또는 뜻 검색"></label><label class="date-search-label">업로드 날짜 <select id="wordDateFilter" aria-label="업로드 날짜로 검색"><option value="all">모든 날짜</option></select></label><div class="filter-group" role="group" aria-label="단어 필터"><button class="filter active" data-filter="all">전체</button><button class="filter" data-filter="mastered">익숙한 단어</button></div><button class="plain-link export-link" id="exportButton">엑셀 내보내기 ↗</button></div>
         <div id="wordList" class="word-list"></div>
       </section>
 

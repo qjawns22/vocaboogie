@@ -1,6 +1,5 @@
 let cfEnv: { GEMINI_API_KEY?: string; GEMINI_MODEL?: string } = {};
 try {
-  // @ts-expect-error cloudflare:workers is provided at runtime in Cloudflare Workers
   const workers = await import("cloudflare:workers");
   cfEnv = (workers.env as typeof cfEnv) || {};
 } catch {
@@ -147,7 +146,7 @@ function parseAssessment(value: unknown): Assessment | null {
   };
 }
 
-function resolveApiKey(request: Request): string | null {
+export function resolveApiKey(request: Request): string | null {
   const headerKey = request.headers.get("x-gemini-api-key")?.trim();
   if (headerKey) return headerKey;
 
@@ -259,7 +258,7 @@ export async function POST(request: Request) {
   const isChatGPTEnv = Boolean(request.headers.get("oai-authenticated-user-id"));
   if (isChatGPTEnv) {
     try {
-      const { getChatGPTUser } = await import("../../chatgpt-auth.ts");
+      const { getChatGPTUser } = await import("../../chatgpt-auth");
       const user = await getChatGPTUser();
       if (!user) return reply({ error: "로그인이 필요합니다." }, 401);
     } catch {
